@@ -1,0 +1,16 @@
+{
+  "transcription": {
+    "title": "Trascrizione Live",
+    "placeholder": "Clicca su \"Avvia Registrazione\" e parla nel microfono...",
+    "start": "Avvia Registrazione",
+    "stop": "Ferma Registrazione",
+    "clear": "Svuota",
+    "micDenied": "Accesso al microfono negato o non disponibile."
+  },
+  "status": {
+    "disconnected": "Disconnesso",
+    "ready": "Pronto",
+    "recording": "Registrazione...",
+    "error": "Errore"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "transcription": {
+    "title": "Live Transkription",
+    "placeholder": "Klicke auf \"Aufnahme Starten\" und sprich in dein Mikrofon...",
+    "start": "Aufnahme Starten",
+    "stop": "Aufnahme Stoppen",
+    "clear": "Leeren",
+    "micDenied": "Mikrofon-Zugriff wurde verweigert oder ist nicht verfügbar."
+  },
+  "status": {
+    "disconnected": "Getrennt",
+    "ready": "Bereit",
+    "recording": "Nimmt auf...",
+    "error": "Fehler"
+  }
+}

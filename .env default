@@ -1,0 +1,9 @@
+SERVER_PORT=3000
+
+WHISPER_HOST=vui-service
+WHISPER_PORT=10300
+WHISPER_LANG=de
+
+WHISPER_URL=http://vui-service:10300/v1/audio/transcriptions
+
+VITE_WS_HOST=localhost

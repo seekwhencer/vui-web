@@ -1,0 +1,57 @@
+services:
+  vui-service:
+    image: lscr.io/linuxserver/faster-whisper:gpu
+    container_name: vui-service
+    runtime: nvidia
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      # oder medium / large-v3
+      - WHISPER_MODEL=large-v3-turbo
+      - WHISPER_LANG=de
+    ports:
+      - "${WHISPER_PORT}:${WHISPER_PORT}"
+    volumes:
+      - ./models:/config
+    restart: unless-stopped
+    networks:
+      - vui
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  vui-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: vui-server
+    image: vui-server
+    restart: unless-stopped
+    command: ["npm", "run", "dev"]
+    working_dir: /app/server
+    networks:
+      - vui
+    ports:
+      - ${SERVER_PORT}:${SERVER_PORT}
+    volumes:
+      - ./:/app
+      - /app/server/node_modules
+      - /app/frontend/node_modules
+    environment:
+      - NODE_ENV=development
+      - SERVER_PORT=${SERVER_PORT}
+      - WHISPER_HOST=${WHISPER_HOST}
+      - WHISPER_PORT=${WHISPER_PORT}
+      - WHISPER_LANG=${WHISPER_LANG}
+      - VITE_WS_HOST=${VITE_WS_HOST}
+      - VITE_WS_PORT=${SERVER_PORT}
+
+networks:
+  vui:
+    external: false
+    name: "vui"

@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+frontend/dist/
+
+# Secrets / local runtime config (enthält u. a. mediamtxAuthToken)
+server/config.json
+.env
+
+# Runtime data
+models/
+
+# Agent / Tooling State
+.HANDOFF_STATE.md
+.kilo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+.vscode

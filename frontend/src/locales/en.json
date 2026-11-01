@@ -1,0 +1,16 @@
+{
+  "transcription": {
+    "title": "Live Transcription",
+    "placeholder": "Click \"Start Recording\" and speak into your microphone...",
+    "start": "Start Recording",
+    "stop": "Stop Recording",
+    "clear": "Clear",
+    "micDenied": "Microphone access was denied or is not available."
+  },
+  "status": {
+    "disconnected": "Disconnected",
+    "ready": "Ready",
+    "recording": "Recording...",
+    "error": "Error"
+  }
+}

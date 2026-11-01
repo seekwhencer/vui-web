@@ -12,5 +12,11 @@
     "ready": "Ready",
     "recording": "Recording...",
     "error": "Error"
+  },
+  "theme": {
+    "toggle": "Toggle light/dark theme"
+  },
+  "language": {
+    "label": "Language"
   }
 }

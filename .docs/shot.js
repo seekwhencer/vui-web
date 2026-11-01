@@ -6,6 +6,7 @@ const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/+$/, '
 const OUT = process.env.OUT_DIR || './screenshots';
 const VIEWPORT = { width: 1300, height: 1000 };
 const ZOOM = '1.25'; // "zoom in twice": 100% -> 110% -> 125%
+const THEMES = (process.env.THEMES || 'light,dark').split(',').map((s) => s.trim()).filter(Boolean);
 
 const log = (...a) => console.log('[shot]', ...a);
 
@@ -24,30 +25,39 @@ async function scrollToTop(page) {
   await page.waitForTimeout(150);
 }
 
-// Apply the "zoom in twice" (CSS zoom) on every new document automatically.
-async function applyZoom(context) {
-  await context.addInitScript((z) => {
-    const apply = () => { document.documentElement.style.zoom = z; };
+// Apply zoom + forced theme on every new document automatically.
+async function newThemedContext(browser, theme) {
+  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  await context.addInitScript(({ zoom, theme: forcedTheme }) => {
+    const apply = () => {
+      document.documentElement.style.zoom = zoom;
+      document.documentElement.dataset.theme = forcedTheme;
+    };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
     else apply();
-  }, ZOOM);
+  }, { zoom: ZOOM, theme });
+  return context;
 }
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-  await applyZoom(context);
-  const page = await context.newPage();
 
-  await goto(page, BASE + '/');
-  await page.waitForSelector('.layout__sidebar, .page__title, main, body', { timeout: 15000 });
-  await page.waitForTimeout(900);
-  await scrollToTop(page);
+  for (const theme of THEMES) {
+    const context = await newThemedContext(browser, theme);
+    const page = await context.newPage();
 
-  const file = path.join(OUT, 'dashboard.png');
-  await page.screenshot({ path: file, fullPage: true });
-  log('index', file);
+    await goto(page, BASE + '/');
+    await page.waitForSelector('.layout__sidebar, .page__title, main, body', { timeout: 15000 });
+    await page.waitForTimeout(900);
+    await scrollToTop(page);
+
+    const file = path.join(OUT, `dashboard-${theme}.png`);
+    await page.screenshot({ path: file, fullPage: true });
+    log(theme, file);
+
+    await context.close();
+  }
 
   await browser.close();
 })().catch((e) => {

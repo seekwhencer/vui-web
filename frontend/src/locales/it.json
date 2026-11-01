@@ -12,5 +12,11 @@
     "ready": "Pronto",
     "recording": "Registrazione...",
     "error": "Errore"
+  },
+  "theme": {
+    "toggle": "Cambia tema chiaro/scuro"
+  },
+  "language": {
+    "label": "Lingua"
   }
 }

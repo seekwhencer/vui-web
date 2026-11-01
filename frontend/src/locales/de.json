@@ -12,5 +12,11 @@
     "ready": "Bereit",
     "recording": "Nimmt auf...",
     "error": "Fehler"
+  },
+  "theme": {
+    "toggle": "Hell/Dunkel umschalten"
+  },
+  "language": {
+    "label": "Sprache"
   }
 }

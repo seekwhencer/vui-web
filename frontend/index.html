@@ -1,9 +1,22 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="auto">
+<html lang="de" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RTX Realtime Voice-to-Text</title>
+  <script>
+    // Persistiertes Theme vor dem ersten Paint anwenden (kein FOUC).
+    (function () {
+      try {
+        var t = localStorage.getItem('mtxui.theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.dataset.theme = t;
+        }
+      } catch (e) {
+        /* ignorieren */
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>

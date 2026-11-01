@@ -7,14 +7,35 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      # oder medium / large-v3
       - WHISPER_MODEL=large-v3-turbo
       - WHISPER_LANG=de
     ports:
       - "${WHISPER_PORT}:${WHISPER_PORT}"
     volumes:
-      - ./models:/config
+      - ./whisper:/config
     restart: unless-stopped
+    networks:
+      - vui
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  vui-tts:
+    image: localai/localai:latest-gpu-nvidia-cuda-12
+    container_name: vui-tts
+    restart: unless-stopped
+    environment:
+      - MODELS_PATH=/models
+      # Startet LocalAI direkt auf deinem gewünschten Port aus der .env
+      - PORT=${TTS_PORT}
+      # Lädt automatisch die Galerie-Konfigurationen für einfache Modell-Downloads
+      - GALLERIES=[{"name":"localai", "url":"github:mudler/LocalAI/gallery/index.yaml@master"}]
+    volumes:
+      - ./localai/models:/models
     networks:
       - vui
     deploy:
@@ -50,6 +71,9 @@ services:
       - WHISPER_LANG=${WHISPER_LANG}
       - VITE_WS_HOST=${VITE_WS_HOST}
       - VITE_WS_PORT=${SERVER_PORT}
+      # Neue Variablen für dein Node.js Backend:
+      - TTS_HOST=vui-tts
+      - TTS_PORT=${TTS_PORT}
 
 networks:
   vui:

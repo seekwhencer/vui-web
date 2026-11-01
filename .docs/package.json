@@ -1,0 +1,16 @@
+{
+  "name": "vui-docs",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "shot.js",
+  "scripts": {
+    "screenshots": "node ./shot.js",
+    "badges": "node ./shot_badges.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

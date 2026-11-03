@@ -2,6 +2,8 @@
 node_modules/
 server/node_modules
 frontend/node_modules
+localai
+whisper
 
 # Build output (rebuilt inside image)
 dist/

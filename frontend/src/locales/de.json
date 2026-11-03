@@ -18,5 +18,47 @@
   },
   "language": {
     "label": "Sprache"
+  },
+  "settings": {
+    "title": "Whisper-Einstellungen",
+    "toggle": "Einstellungen öffnen",
+    "close": "Einstellungen schließen",
+    "save": "Speichern",
+    "saving": "Wird gespeichert...",
+    "saved": "Gespeichert",
+    "reset": "Zurücksetzen",
+    "sections": {
+      "basic": "Basis",
+      "decoding": "Decoding",
+      "thresholds": "Schwellwerte",
+      "context": "Kontext",
+      "vad": "Spracherkennung (VAD)",
+      "badwords": "Badwords"
+    },
+    "fields": {
+      "language": "Sprache",
+      "temperature": "Temperatur",
+      "prompt": "Prompt",
+      "translate": "Ins Englische übersetzen",
+      "beamSize": "Beam-Größe",
+      "bestOf": "Best of",
+      "patience": "Geduld (Patience)",
+      "lengthPenalty": "Längen-Strafe",
+      "repetitionPenalty": "Wiederholungs-Strafe",
+      "compressionRatioThreshold": "Kompressionsraten-Schwelle",
+      "logProbThreshold": "Log-Probabilitäts-Schwelle",
+      "noSpeechThreshold": "Kein-Sprache-Schwelle",
+      "conditionOnPreviousText": "Auf vorherigen Text beziehen",
+      "initialPrompt": "Initialer Prompt",
+      "hotwords": "Schlüsselwörter (Hotwords)",
+      "vadFilter": "VAD-Filter aktivieren",
+      "vadThreshold": "VAD-Schwelle",
+      "vadMinSpeech": "Min. Sprechdauer (ms)",
+      "vadMinSilence": "Min. Stille (ms)",
+      "vadWindow": "Fenstergröße (Samples)",
+      "vadPad": "Sprech-Padding (ms)",
+      "badwords": "Badwords (eine pro Zeile)",
+      "badwordsPlaceholder": "z. B.\nSpam\nWerbewort"
+    }
   }
 }

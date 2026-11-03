@@ -26,3 +26,156 @@
   <img src=".docs/badges/playwright.png" alt="playwright | coming soon" height="20">
   <img src=".docs/badges/status.png" alt="status | it works™" height="20">
 </p>
+
+---
+
+**vui-web** is a self-hosted, real-time speech-to-text web app. It captures your
+microphone in the browser, streams raw audio to a local Node.js server, and
+transcribes it with [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+running on your own GPU. No cloud, no API keys, no data leaves your machine.
+
+## Features
+
+- **Live transcription** — speak, watch the text appear in near real-time.
+- **100% local** — audio and inference stay on your hardware.
+- **GPU accelerated** — runs `faster-whisper` via the `linuxserver/faster-whisper` image.
+- **Tunable model** — swap in any faster-whisper model (default: `large-v3-turbo`, German-tuned).
+- **Full Whisper control** — temperature, beam size, VAD, hotwords, thresholds, and more, editable live from the UI.
+- **Badword filtering** — strip unwanted words from the transcript server-side.
+- **i18n** — English, German, Italian.
+- **Dark / light theme** — toggle in the top bar.
+- **Docker Compose** — one command to bring up the whole stack.
+
+## Screenshots
+
+| Dark | Light |
+|------|-------|
+| <img src=".docs/screenshots/dashboard-dark.png" alt="vui-web dark theme" width="480"> | <img src=".docs/screenshots/dashboard-light.png" alt="vui-web light theme" width="480"> |
+
+
+## Tech stack
+
+| Layer     | Tech |
+|-----------|------|
+| Frontend  | React 19, Vite 8, JavaScript (no TypeScript), `react-router-dom`, `i18next`, `lucide-react` |
+| Server    | Node.js 20+, Express 5, `ws` (WebSocket), Wyoming client (raw TCP) |
+| ASR       | `linuxserver/faster-whisper` (GPU), faster-whisper / large-v3-turbo |
+| Runtime   | Docker + Docker Compose, NVIDIA runtime |
+
+## Quick start
+
+### Prerequisites
+
+- Docker + Docker Compose
+- An NVIDIA GPU with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed
+
+### Run
+
+```bash
+# 1. Configure
+cp ".env default" .env      # then edit .env (model, language, ports)
+
+# 2. Start the stack
+docker compose up -d --build
+
+# 3. Open the UI
+#    http://localhost:3000
+```
+
+The stack starts three things:
+
+| Service       | What it does |
+|---------------|--------------|
+| `vui-service` | `faster-whisper` ASR engine (GPU) |
+| `vui-server`  | Node.js API + WebSocket bridge + serves the React app |
+| *(vui-tts)*   | Optional TTS (LocalAI) — commented out by default |
+
+## Configuration
+
+All runtime configuration lives in `.env` (see `.env default` for the full list).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_PORT` | `3000` | Port for the web UI / API |
+| `WHISPER_HOST` | `vui-service` | Host of the faster-whisper service |
+| `WHISPER_PORT` | `10300` | Wyoming port of the faster-whisper service |
+| `WHISPER_LANG` | `de` | Default transcription language |
+| `WHISPER_MODEL` | `jimmymeister/whisper-large-v3-turbo-german-ct2` | faster-whisper model to load |
+
+> **Note:** Whisper transcription parameters (temperature, beam size, VAD, hotwords,
+> badwords, …) are **not** set via `.env` in normal use — they are managed at runtime
+> through the in-app **Settings** panel and persisted to `server/config.json`.
+> The `WHISPER_*` env vars act as initial defaults only.
+
+### Settings panel
+
+Open the gear icon in the top bar to tune the model live. Changes apply immediately
+(no restart) for most parameters. Sections:
+
+- **Basis** — language, temperature, prompt, translate-to-English
+- **Decoding** — beam size, best-of, patience, length/repetition penalties
+- **Schwellwerte** — compression-ratio / log-prob / no-speech thresholds
+- **Kontext** — initial prompt, hotwords
+- **VAD** — voice-activity-detection filter + parameters
+- **Badwords** — words to strip from the transcript
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/health` | Health check → `{ status: 'ok' }` |
+| `GET`  | `/api/settings` | Read current Whisper settings + badwords |
+| `PUT`  | `/api/settings` | Update settings (validated, persisted to `config.json`) |
+| `WS`   | `/transcribe` | Live transcription stream (binary PCM in, JSON text out) |
+
+## Development
+
+Run the server and frontend locally (outside Docker):
+
+```bash
+# Server (Node 20+)
+cd server
+npm install
+npm run dev          # node --watch
+
+# Frontend (Vite)
+cd frontend
+npm install
+npm run dev
+```
+
+> In Docker, the server runs the frontend in Vite `middlewareMode` and serves it
+> itself — you only ever talk to one port (`SERVER_PORT`).
+
+## How it works
+
+```
+Browser (React 19)
+  │  getUserMedia → AudioWorklet → 16 kHz mono PCM
+  │  WebSocket  ────────────────────────────────►  Node.js server (Express 5)
+  │                                                 │
+  │  /transcribe  (WS, raw PCM)                     ├─► TranscribeBridge
+  │  /api/settings  (GET/PUT)                       │      │  Wyoming protocol (TCP)
+  │  /health      (GET)                             │      ▼
+  │  /*           (SPA)                             │   faster-whisper (GPU)
+  └─────────────────────────────────────────────────┘      │
+        ▲                                                  │
+        └──────────── JSON { text, isFinal } ◄─────────────┘
+```
+
+1. The browser captures microphone audio and resamples it to **16 kHz mono 16-bit PCM**
+   using an `AudioWorklet`.
+2. PCM chunks are sent over a **WebSocket** (`/transcribe`) to the Node.js server.
+3. The server buffers ~2 s of audio and forwards it to the `faster-whisper` service
+   using the **Wyoming protocol** (TCP, not HTTP).
+4. The transcribed text is streamed back as JSON and rendered live.
+
+### Tests
+
+```bash
+cd server && npm test          # vitest
+```
+
+## License
+
+MIT

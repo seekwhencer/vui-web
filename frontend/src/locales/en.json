@@ -18,5 +18,47 @@
   },
   "language": {
     "label": "Language"
+  },
+  "settings": {
+    "title": "Whisper Settings",
+    "toggle": "Open settings",
+    "close": "Close settings",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "reset": "Reset",
+    "sections": {
+      "basic": "Basic",
+      "decoding": "Decoding",
+      "thresholds": "Thresholds",
+      "context": "Context",
+      "vad": "Voice Activity Detection",
+      "badwords": "Badwords"
+    },
+    "fields": {
+      "language": "Language",
+      "temperature": "Temperature",
+      "prompt": "Prompt",
+      "translate": "Translate to English",
+      "beamSize": "Beam size",
+      "bestOf": "Best of",
+      "patience": "Patience",
+      "lengthPenalty": "Length penalty",
+      "repetitionPenalty": "Repetition penalty",
+      "compressionRatioThreshold": "Compression ratio threshold",
+      "logProbThreshold": "Log probability threshold",
+      "noSpeechThreshold": "No speech threshold",
+      "conditionOnPreviousText": "Condition on previous text",
+      "initialPrompt": "Initial prompt",
+      "hotwords": "Hotwords",
+      "vadFilter": "Enable VAD filter",
+      "vadThreshold": "VAD threshold",
+      "vadMinSpeech": "Min speech duration (ms)",
+      "vadMinSilence": "Min silence duration (ms)",
+      "vadWindow": "Window size (samples)",
+      "vadPad": "Speech padding (ms)",
+      "badwords": "Badwords (one per line)",
+      "badwordsPlaceholder": "e.g.\nspam\nad word"
+    }
   }
 }

@@ -34,6 +34,26 @@ class Router {
     async define() {
         this.router.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
+        // Settings-API: Whisper-Parameter + Badwords lesen/schreiben.
+        // Die Bridge liest die Werte dynamisch → Änderungen wirken sofort.
+        this.router.get('/api/settings', (req, res) => {
+            res.status(200).json({ success: true, data: this.config.getSettings() });
+        });
+
+        this.router.put('/api/settings', (req, res, next) => {
+            try {
+                const result = this.config.updateSettings(req.body || {});
+                res.status(200).json({
+                    success: true,
+                    data: this.config.getSettings(),
+                    applied: result.applied,
+                    restartRequired: result.restartRequired
+                });
+            } catch (err) {
+                next(err);
+            }
+        });
+
         const frontendRouter = new FrontendRouter(this.config, this.httpServer, this.logger);
         await frontendRouter.init();
         this.router.use('/', frontendRouter.router);

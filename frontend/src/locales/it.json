@@ -18,5 +18,47 @@
   },
   "language": {
     "label": "Lingua"
+  },
+  "settings": {
+    "title": "Impostazioni Whisper",
+    "toggle": "Apri impostazioni",
+    "close": "Chiudi impostazioni",
+    "save": "Salva",
+    "saving": "Salvataggio...",
+    "saved": "Salvato",
+    "reset": "Reimposta",
+    "sections": {
+      "basic": "Base",
+      "decoding": "Decodifica",
+      "thresholds": "Soglie",
+      "context": "Contesto",
+      "vad": "Rilevamento voce (VAD)",
+      "badwords": "Parole da filtrare"
+    },
+    "fields": {
+      "language": "Lingua",
+      "temperature": "Temperatura",
+      "prompt": "Prompt",
+      "translate": "Traduci in inglese",
+      "beamSize": "Dimensione beam",
+      "bestOf": "Best of",
+      "patience": "Pazienza",
+      "lengthPenalty": "Penalità lunghezza",
+      "repetitionPenalty": "Penalità ripetizione",
+      "compressionRatioThreshold": "Soglia rapporto di compressione",
+      "logProbThreshold": "Soglia log-probabilità",
+      "noSpeechThreshold": "Soglia assenza voce",
+      "conditionOnPreviousText": "Condiziona sul testo precedente",
+      "initialPrompt": "Prompt iniziale",
+      "hotwords": "Parole chiave (hotwords)",
+      "vadFilter": "Attiva filtro VAD",
+      "vadThreshold": "Soglia VAD",
+      "vadMinSpeech": "Durata min. voce (ms)",
+      "vadMinSilence": "Durata min. silenzio (ms)",
+      "vadWindow": "Dimensione finestra (samples)",
+      "vadPad": "Padding voce (ms)",
+      "badwords": "Parole da filtrare (una per riga)",
+      "badwordsPlaceholder": "es.\nspam\nparola pubblicitaria"
+    }
   }
 }

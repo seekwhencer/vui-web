@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+whisper
+localai
 
 # Build output
 dist/

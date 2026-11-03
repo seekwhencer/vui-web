@@ -33,9 +33,8 @@ class TranscribeBridge {
         this.config = config;
         this.logger = logger || { log: () => { }, error: () => { } };
         this.label = '[TranscribeBridge]';
-        this.whisperHost = config?.whisperHost || 'vui-service';
-        this.whisperPort = config?.whisperPort || 10300;
-        this.whisperLang = config?.whisperLang || 'de';
+        // Host/Port/Parameter werden pro Transkription dynamisch aus der Config
+        // gelesen, damit Settings-Updates ohne Neustart wirksam werden.
 
         this.wss = new WebSocketServer({ noServer: true });
         this.clients = new Set();
@@ -94,10 +93,66 @@ class TranscribeBridge {
      * @returns {Promise<void>}
      */
     async processChunk(ws, pcm) {
-        const text = await this.transcribe(pcm);
+        const raw = await this.transcribe(pcm);
+        const text = this.filterBadwords(raw);
         if (text) {
             this.safeSend(ws, { text, isFinal: true });
         }
+    }
+
+    /**
+     * Baut die `transcribe`-Nachricht (Wyoming-Protokoll) aus den aktuellen
+     * Config-Parametern. Nur Parameter mit sinnvollem Wert werden gesendet.
+     * @returns {Record<string, unknown>}
+     */
+    buildTranscribeData() {
+        const w = this.config?.whisper || {};
+        const data = {};
+
+        if (w.language) data.language = w.language;
+        if (Array.isArray(w.temperature) && w.temperature.length > 0) data.temperature = w.temperature;
+        if (w.prompt) data.prompt = w.prompt;
+        data.translate = Boolean(w.translate);
+
+        if (Number.isInteger(w.beamSize)) data.beam_size = w.beamSize;
+        if (Number.isInteger(w.bestOf)) data.best_of = w.bestOf;
+        if (typeof w.patience === 'number') data.patience = w.patience;
+        if (typeof w.lengthPenalty === 'number') data.length_penalty = w.lengthPenalty;
+        if (typeof w.repetitionPenalty === 'number') data.repetition_penalty = w.repetitionPenalty;
+
+        if (typeof w.compressionRatioThreshold === 'number') data.compression_ratio_threshold = w.compressionRatioThreshold;
+        if (typeof w.logProbThreshold === 'number') data.log_prob_threshold = w.logProbThreshold;
+        if (typeof w.noSpeechThreshold === 'number') data.no_speech_threshold = w.noSpeechThreshold;
+        data.condition_on_previous_text = Boolean(w.conditionOnPreviousText);
+
+        if (w.initialPrompt) data.initial_prompt = w.initialPrompt;
+        if (w.hotwords) data.hotwords = w.hotwords;
+
+        // VAD: nur aktivieren, wenn explizit gewünscht (sonst bleibt es aus).
+        if (w.vadFilter) {
+            data.vad_parameters = (w.vadParameters && typeof w.vadParameters === 'object') ? w.vadParameters : {};
+        }
+
+        return data;
+    }
+
+    /**
+     * Filtert die Badwords (case-insensitiv) aus dem Transkript und räumt
+     * dadurch entstandene Leerzeichen auf.
+     * @param {string} text
+     * @returns {string}
+     */
+    filterBadwords(text) {
+        const badwords = this.config?.badwords || [];
+        if (!badwords.length || !text) return text;
+
+        let result = text;
+        for (const word of badwords) {
+            if (!word) continue;
+            const escaped = String(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            result = result.replace(new RegExp(escaped, 'gi'), '');
+        }
+        return result.replace(/\s+/g, ' ').trim();
     }
 
     /**
@@ -112,7 +167,9 @@ class TranscribeBridge {
     transcribe(pcm) {
         return new Promise((resolve, reject) => {
             let settled = false;
-            const client = net.connect(this.whisperPort, this.whisperHost);
+            const host = this.config?.whisperHost || 'vui-service';
+            const port = this.config?.whisperPort || 10300;
+            const client = net.connect(port, host);
 
             const finish = (err, value) => {
                 if (settled) return;
@@ -134,7 +191,7 @@ class TranscribeBridge {
                     client.write(Buffer.from(JSON.stringify(obj) + '\n', 'utf8'));
                     if (payload) client.write(payload);
                 };
-                sendMsg({ type: 'transcribe', data: { language: this.whisperLang } });
+                sendMsg({ type: 'transcribe', data: this.buildTranscribeData() });
                 sendMsg({ type: 'audio-start', data: fmt });
                 sendMsg({ type: 'audio-chunk', data: fmt }, pcm);
                 sendMsg({ type: 'audio-stop' });
@@ -147,24 +204,25 @@ class TranscribeBridge {
                     const nl = buf.indexOf('\n');
                     if (nl === -1) break;
                     const line = buf.slice(0, nl).toString('utf8');
-                    buf = buf.slice(nl + 1);
 
                     let msg;
-                    try { msg = JSON.parse(line); } catch { continue; }
+                    try { msg = JSON.parse(line); } catch { buf = buf.slice(nl + 1); continue; }
 
-                    // data_length-Bytes = zusätzliches JSON (z. B. {text}) → mergen
+                    // Wyoming-Framing: Header-Zeile + data_length-Bytes (JSON) + payload_length-Bytes (Binär).
+                    // TCP liefert nur einen Byte-Stream ohne Nachrichten-Grenzen: erst verarbeiten,
+                    // wenn ALLE Teile der Nachricht im Puffer liegen (sonst auf weitere Daten warten).
                     const dataLen = msg.data_length || 0;
+                    const payloadLen = msg.payload_length || 0;
+                    const need = nl + 1 + dataLen + payloadLen;
+                    if (buf.length < need) break; // noch unvollständig
+
+                    buf = buf.slice(nl + 1);
                     if (dataLen > 0) {
-                        if (buf.length < dataLen) break; // noch unvollständig
                         const dataJson = buf.slice(0, dataLen).toString('utf8');
                         buf = buf.slice(dataLen);
                         try { msg.data = JSON.parse(dataJson); } catch { /* ignore */ }
                     }
-                    const payloadLen = msg.payload_length || 0;
-                    if (payloadLen > 0) {
-                        if (buf.length < payloadLen) break;
-                        buf = buf.slice(payloadLen);
-                    }
+                    if (payloadLen > 0) buf = buf.slice(payloadLen);
 
                     if (msg.type === 'transcript') {
                         finish(null, (msg.data && msg.data.text) || '');

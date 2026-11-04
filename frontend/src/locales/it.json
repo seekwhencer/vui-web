@@ -51,6 +51,7 @@
       "conditionOnPreviousText": "Condiziona sul testo precedente",
       "initialPrompt": "Prompt iniziale",
       "hotwords": "Parole chiave (hotwords)",
+      "hotwordsPlaceholder": "es. VUI, Whisper, trascrizione",
       "vadFilter": "Attiva filtro VAD",
       "vadThreshold": "Soglia VAD",
       "vadMinSpeech": "Durata min. voce (ms)",

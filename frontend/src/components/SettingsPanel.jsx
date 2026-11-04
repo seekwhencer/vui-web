@@ -21,7 +21,7 @@ const SECTIONS = [
     id: 'decoding',
     title: 'settings.sections.decoding',
     fields: [
-      { key: 'beamSize', type: 'number', label: 'settings.fields.beamSize', min: 1, step: 1 },
+      { key: 'beamSize', type: 'number', label: 'settings.fields.beamSize', min: 0, step: 1 },
       { key: 'bestOf', type: 'number', label: 'settings.fields.bestOf', min: 1, step: 1 },
       { key: 'patience', type: 'number', label: 'settings.fields.patience', step: 0.1 },
       { key: 'lengthPenalty', type: 'number', label: 'settings.fields.lengthPenalty', step: 0.1 },
@@ -43,7 +43,7 @@ const SECTIONS = [
     title: 'settings.sections.context',
     fields: [
       { key: 'initialPrompt', type: 'text', label: 'settings.fields.initialPrompt' },
-      { key: 'hotwords', type: 'text', label: 'settings.fields.hotwords' },
+      { key: 'hotwords', type: 'text', label: 'settings.fields.hotwords', placeholder: 'settings.fields.hotwordsPlaceholder' },
     ],
   },
   {
@@ -198,7 +198,7 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
         <input
           type="text"
           value={typeof value === 'string' ? value : ''}
-          placeholder={field.placeholder}
+          placeholder={field.placeholder ? t(field.placeholder) : undefined}
           onChange={(e) => setWhisper(field.key, e.target.value)}
         />
       </label>

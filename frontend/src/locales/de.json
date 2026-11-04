@@ -51,6 +51,7 @@
       "conditionOnPreviousText": "Auf vorherigen Text beziehen",
       "initialPrompt": "Initialer Prompt",
       "hotwords": "Schlüsselwörter (Hotwords)",
+      "hotwordsPlaceholder": "z. B. VUI, Whisper, Transkription",
       "vadFilter": "VAD-Filter aktivieren",
       "vadThreshold": "VAD-Schwelle",
       "vadMinSpeech": "Min. Sprechdauer (ms)",

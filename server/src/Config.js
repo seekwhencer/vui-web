@@ -20,8 +20,8 @@ const WHISPER_PARAMS = {
     temperature: { env: 'WHISPER_TEMPERATURE', type: 'array', default: [0.0], wyoming: 'temperature' },
     prompt: { env: 'WHISPER_PROMPT', type: 'string', default: '', wyoming: 'prompt' },
     translate: { env: 'WHISPER_TRANSLATE', type: 'boolean', default: false, wyoming: 'translate' },
-    beamSize: { env: 'WHISPER_BEAM_SIZE', type: 'integer', default: 5, wyoming: 'beam_size' },
-    bestOf: { env: 'WHISPER_BEST_OF', type: 'integer', default: 5, wyoming: 'best_of' },
+    beamSize: { env: 'WHISPER_BEAM_SIZE', type: 'integer', default: 5, wyoming: 'beam_size', min: 0 },
+    bestOf: { env: 'WHISPER_BEST_OF', type: 'integer', default: 5, wyoming: 'best_of', min: 1 },
     patience: { env: 'WHISPER_PATIENCE', type: 'number', default: 1.0, wyoming: 'patience' },
     lengthPenalty: { env: 'WHISPER_LENGTH_PENALTY', type: 'number', default: 1.0, wyoming: 'length_penalty' },
     repetitionPenalty: { env: 'WHISPER_REPETITION_PENALTY', type: 'number', default: 1.0, wyoming: 'repetition_penalty' },
@@ -258,15 +258,20 @@ class Config {
             case 'boolean':
                 if (typeof value !== 'boolean') return `${label} muss ein Boolean sein`;
                 break;
-            case 'integer':
-                if (!Number.isInteger(value) || value < 1) return `${label} muss eine positive Ganzzahl sein`;
+            case 'integer': {
+                if (value === '') break; // leer → Standardwert
+                const min = spec.min ?? 1;
+                if (!Number.isInteger(value) || value < min) return `${label} muss eine Ganzzahl >= ${min} sein`;
                 break;
+            }
             case 'number':
+                if (value === '') break; // leer → Standardwert
                 if (typeof value !== 'number' || !Number.isFinite(value)) return `${label} muss eine Zahl sein`;
                 break;
             case 'array':
-                if (!Array.isArray(value) || value.length === 0 || value.some((n) => typeof n !== 'number' || !Number.isFinite(n)))
-                    return `${label} muss ein nicht-leeres Array aus Zahlen sein`;
+                if (value === '' || (Array.isArray(value) && value.length === 0)) break; // leer → Standardwert
+                if (!Array.isArray(value) || value.some((n) => typeof n !== 'number' || !Number.isFinite(n)))
+                    return `${label} muss ein Array aus Zahlen sein`;
                 break;
             case 'object':
                 if (value === null || typeof value !== 'object' || Array.isArray(value))

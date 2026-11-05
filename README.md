@@ -48,9 +48,9 @@ running on your own GPU. No cloud, no API keys, no data leaves your machine.
 
 ## Screenshots
 
-| Dark | Light |
-|------|-------|
-| <img src=".docs/screenshots/dashboard-dark.png" alt="vui-web dark theme" width="480"> | <img src=".docs/screenshots/dashboard-light.png" alt="vui-web light theme" width="480"> |
+<p align="center">
+  <img src=".docs/screenshots/transcription-dark.png" alt="vui-web — Live Transcription (dark theme)" width="900">
+</p>
 
 
 ## Tech stack
@@ -175,6 +175,20 @@ Browser (React 19)
 ```bash
 cd server && npm test          # vitest
 ```
+
+## All Screenshots
+
+| Screen | Dark | Light |
+|--------|------|-------|
+| Transcription | <img src=".docs/screenshots/transcription-dark.png" alt="Transcription (dark)" width="360"> | <img src=".docs/screenshots/transcription-light.png" alt="Transcription (light)" width="360"> |
+| Chat | <img src=".docs/screenshots/chat-dark.png" alt="Chat (dark)" width="360"> | <img src=".docs/screenshots/chat-light.png" alt="Chat (light)" width="360"> |
+| Settings — Basic | <img src=".docs/screenshots/settings-basic-dark.png" alt="Settings Basic (dark)" width="360"> | <img src=".docs/screenshots/settings-basic-light.png" alt="Settings Basic (light)" width="360"> |
+| Settings — Decoding | <img src=".docs/screenshots/settings-decoding-dark.png" alt="Settings Decoding (dark)" width="360"> | <img src=".docs/screenshots/settings-decoding-light.png" alt="Settings Decoding (light)" width="360"> |
+| Settings — Thresholds | <img src=".docs/screenshots/settings-thresholds-dark.png" alt="Settings Thresholds (dark)" width="360"> | <img src=".docs/screenshots/settings-thresholds-light.png" alt="Settings Thresholds (light)" width="360"> |
+| Settings — Context | <img src=".docs/screenshots/settings-context-dark.png" alt="Settings Context (dark)" width="360"> | <img src=".docs/screenshots/settings-context-light.png" alt="Settings Context (light)" width="360"> |
+| Settings — VAD | <img src=".docs/screenshots/settings-voice-activity-detection-dark.png" alt="Settings VAD (dark)" width="360"> | <img src=".docs/screenshots/settings-voice-activity-detection-light.png" alt="Settings VAD (light)" width="360"> |
+| Settings — LLM | <img src=".docs/screenshots/settings-llm-dark.png" alt="Settings LLM (dark)" width="360"> | <img src=".docs/screenshots/settings-llm-light.png" alt="Settings LLM (light)" width="360"> |
+| Settings — Badwords | <img src=".docs/screenshots/settings-badwords-dark.png" alt="Settings Badwords (dark)" width="360"> | <img src=".docs/screenshots/settings-badwords-light.png" alt="Settings Badwords (light)" width="360"> |
 
 ## License
 

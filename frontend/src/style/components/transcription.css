@@ -3,7 +3,7 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  padding: var(--space-12) var(--space-5) var(--space-5);
+  padding: calc(var(--space-12) + var(--space-4)) var(--space-5) var(--space-5);
 }
 
 .transcription {
@@ -130,4 +130,10 @@
 .transcript__interim {
   color: var(--color-primary);
   font-style: italic;
+}
+
+.transcription__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-5);
 }

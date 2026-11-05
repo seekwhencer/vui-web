@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, RotateCcw, X } from 'lucide-react';
+import { Save, RotateCcw } from 'lucide-react';
+import useSettings from '../hooks/useSettings.js';
 
 /**
  * Feld-Definitionen, gruppiert in Sektionen.
- * type: 'text' | 'number' | 'checkbox' | 'temperature'
+ * type: 'text' | 'number' | 'checkbox' | 'temperature' | 'textarea'
+ * group: 'whisper' (Default) | 'llm' → Draft-Gruppe, aus der gelesen/geschrieben wird.
+ * Jede Sektion ist ein eigener Tab auf der Settings-Seite.
  */
 const SECTIONS = [
   {
@@ -58,6 +61,23 @@ const SECTIONS = [
       { key: 'speech_pad_ms', type: 'number', label: 'settings.fields.vadPad', min: 0, step: 50 },
     ],
   },
+  {
+    id: 'llm',
+    title: 'settings.sections.llm',
+    group: 'llm',
+    fields: [
+      { key: 'host', type: 'text', label: 'settings.fields.llmHost', placeholder: 'vui-tts' },
+      { key: 'port', type: 'number', label: 'settings.fields.llmPort', min: 1, max: 65535, step: 1 },
+      { key: 'model', type: 'text', label: 'settings.fields.llmModel', placeholder: 'llama3.1' },
+      { key: 'systemPrompt', type: 'textarea', label: 'settings.fields.llmSystemPrompt' },
+    ],
+  },
+];
+
+// Badwords ist ein eigener Tab (kein Whisper/LLM-Gruppenfeld).
+const TABS = [
+  ...SECTIONS.map((s) => ({ id: s.id, title: s.title })),
+  { id: 'badwords', title: 'settings.sections.badwords' },
 ];
 
 /** temperature-Array ↔ Komma-String für das Textfeld. */
@@ -72,10 +92,12 @@ function stringToTemp(str) {
     .filter((n) => Number.isFinite(n));
 }
 
-export default function SettingsPanel({ settings, saving, error, onSave, onClose }) {
+export default function SettingsPage() {
   const { t } = useTranslation();
+  const { settings, saving, error, save } = useSettings();
 
-  const [draft, setDraft] = useState(null); // { whisper: {...}, badwords: string }
+  const [activeTab, setActiveTab] = useState('basic');
+  const [draft, setDraft] = useState(null); // { whisper: {...}, llm: {...}, badwords: string }
   const [saved, setSaved] = useState(false);
   // true → die nächste Settings-Änderung stammt von unserem eigenen Save
   // (Draft NICHT zurücksetzen, sonst verschwindet der "Gespeichert"-Hinweis).
@@ -90,6 +112,7 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
     }
     setDraft({
       whisper: { ...settings.whisper },
+      llm: { ...(settings.llm || {}) },
       badwords: (settings.badwords || []).join('\n'),
     });
     setSaved(false);
@@ -103,11 +126,6 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
   );
 
   if (!draft) return null;
-
-  const setWhisper = (key, value) => {
-    setSaved(false);
-    setDraft((d) => ({ ...d, whisper: { ...d.whisper, [key]: value } }));
-  };
 
   const setVadParam = (key, value) => {
     setSaved(false);
@@ -128,6 +146,7 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
   const handleSave = async () => {
     const patch = {
       whisper: { ...draft.whisper },
+      llm: { ...draft.llm },
       badwords: draft.badwords
         .split('\n')
         .map((s) => s.trim())
@@ -135,15 +154,29 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
     };
     try {
       skipInitRef.current = true; // eigenes Save → Draft-Init überspringen
-      await onSave(patch);
+      await save(patch);
       setSaved(true);
     } catch {
       // Fehler wird über `error` angezeigt
     }
   };
 
-  const renderField = (field) => {
-    const value = draft.whisper[field.key];
+  const handleReset = () => {
+    setSaved(false);
+    setDraft({
+      whisper: { ...settings.whisper },
+      llm: { ...(settings.llm || {}) },
+      badwords: (settings.badwords || []).join('\n'),
+    });
+  };
+
+  const renderField = (section, field) => {
+    const group = section.group || 'whisper';
+    const value = draft[group][field.key];
+    const setGroupValue = (key, v) => {
+      setSaved(false);
+      setDraft((d) => ({ ...d, [group]: { ...d[group], [key]: v } }));
+    };
 
     if (field.type === 'checkbox') {
       return (
@@ -151,7 +184,7 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
           <input
             type="checkbox"
             checked={Boolean(value)}
-            onChange={(e) => setWhisper(field.key, e.target.checked)}
+            onChange={(e) => setGroupValue(field.key, e.target.checked)}
           />
           <span>{t(field.label)}</span>
         </label>
@@ -166,7 +199,7 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
             type="text"
             value={tempToString(value)}
             placeholder="0.0, 0.5, 1.0"
-            onChange={(e) => setWhisper(field.key, stringToTemp(e.target.value))}
+            onChange={(e) => setGroupValue(field.key, stringToTemp(e.target.value))}
           />
         </label>
       );
@@ -184,8 +217,23 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
             step={field.step}
             onChange={(e) => {
               const n = e.target.value === '' ? '' : Number(e.target.value);
-              setWhisper(field.key, n);
+              setGroupValue(field.key, n);
             }}
+          />
+        </label>
+      );
+    }
+
+    if (field.type === 'textarea') {
+      return (
+        <label className="settings__field settings__field--full">
+          <span>{t(field.label)}</span>
+          <textarea
+            className="settings__textarea"
+            rows={4}
+            value={typeof value === 'string' ? value : ''}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
+            onChange={(e) => setGroupValue(field.key, e.target.value)}
           />
         </label>
       );
@@ -199,89 +247,96 @@ export default function SettingsPanel({ settings, saving, error, onSave, onClose
           type="text"
           value={typeof value === 'string' ? value : ''}
           placeholder={field.placeholder ? t(field.placeholder) : undefined}
-          onChange={(e) => setWhisper(field.key, e.target.value)}
+          onChange={(e) => setGroupValue(field.key, e.target.value)}
         />
       </label>
     );
   };
 
+  const activeSection = SECTIONS.find((s) => s.id === activeTab);
+
   return (
-    <div className="settings">
-      <div className="settings__header">
-        <h2>{t('settings.title')}</h2>
-        <button type="button" className="settings__close" onClick={onClose} aria-label={t('settings.close')}>
-          <X size={18} />
-        </button>
-      </div>
+    <div className="settings-page">
+      <div className="settings">
+        <div className="settings__header">
+          <h2>{t('settings.title')}</h2>
+        </div>
 
-      <div className="settings__body">
-        {SECTIONS.map((section) => (
-          <fieldset key={section.id} className="settings__section">
-            <legend>{t(section.title)}</legend>
-            <div className="settings__grid">
-              {section.fields.map((field) => (
-                <div key={field.key}>{renderField(field)}</div>
-              ))}
-            </div>
+        <div className="settings__tabs" role="tablist" aria-label={t('settings.title')}>
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`settings__tab${activeTab === tab.id ? ' settings__tab--active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {t(tab.title)}
+            </button>
+          ))}
+        </div>
 
-            {/* VAD-Parameter nur sichtbar, wenn VAD aktiviert ist */}
-            {section.subFields && draft.whisper.vadFilter && (
-              <div className="settings__grid settings__grid--sub">
-                {section.subFields.map((field) => (
-                  <label key={field.key} className="settings__field">
-                    <span>{t(field.label)}</span>
-                    <input
-                      type="number"
-                      value={typeof vadParams[field.key] === 'number' ? vadParams[field.key] : ''}
-                      min={field.min}
-                      max={field.max}
-                      step={field.step}
-                      onChange={(e) => {
-                        const n = e.target.value === '' ? '' : Number(e.target.value);
-                        setVadParam(field.key, n);
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
-            )}
-          </fieldset>
-        ))}
+        <div className="settings__body" role="tabpanel">
+          {activeTab === 'badwords' ? (
+            <label className="settings__field settings__field--full">
+              <span>{t('settings.fields.badwords')}</span>
+              <textarea
+                className="settings__textarea"
+                rows={6}
+                value={draft.badwords}
+                placeholder={t('settings.fields.badwordsPlaceholder')}
+                onChange={(e) => setBadwords(e.target.value)}
+              />
+            </label>
+          ) : (
+            activeSection && (
+              <>
+                <div className="settings__grid">
+                  {activeSection.fields.map((field) => (
+                    <div key={field.key}>{renderField(activeSection, field)}</div>
+                  ))}
+                </div>
 
-        <fieldset className="settings__section">
-          <legend>{t('settings.sections.badwords')}</legend>
-          <label className="settings__field settings__field--full">
-            <span>{t('settings.fields.badwords')}</span>
-            <textarea
-              className="settings__textarea"
-              rows={4}
-              value={draft.badwords}
-              placeholder={t('settings.fields.badwordsPlaceholder')}
-              onChange={(e) => setBadwords(e.target.value)}
-            />
-          </label>
-        </fieldset>
-      </div>
+                {/* VAD-Parameter nur sichtbar, wenn VAD aktiviert ist */}
+                {activeSection.subFields && draft.whisper.vadFilter && (
+                  <div className="settings__grid settings__grid--sub">
+                    {activeSection.subFields.map((field) => (
+                      <label key={field.key} className="settings__field">
+                        <span>{t(field.label)}</span>
+                        <input
+                          type="number"
+                          value={typeof vadParams[field.key] === 'number' ? vadParams[field.key] : ''}
+                          min={field.min}
+                          max={field.max}
+                          step={field.step}
+                          onChange={(e) => {
+                            const n = e.target.value === '' ? '' : Number(e.target.value);
+                            setVadParam(field.key, n);
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
+            )
+          )}
+        </div>
 
-      <div className="settings__footer">
-        {error && <span className="settings__error">{error}</span>}
-        {saved && !error && <span className="settings__saved">{t('settings.saved')}</span>}
-        <div className="settings__actions">
-          <button
-            type="button"
-            className="btn btn--secondary"
-            onClick={() => {
-              setSaved(false);
-              setDraft({ whisper: { ...settings.whisper }, badwords: (settings.badwords || []).join('\n') });
-            }}
-          >
-            <RotateCcw size={16} />
-            <span>{t('settings.reset')}</span>
-          </button>
-          <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
-            <Save size={16} />
-            <span>{saving ? t('settings.saving') : t('settings.save')}</span>
-          </button>
+        <div className="settings__footer">
+          {error && <span className="settings__error">{error}</span>}
+          {saved && !error && <span className="settings__saved">{t('settings.saved')}</span>}
+          <div className="settings__actions">
+            <button type="button" className="btn btn--secondary" onClick={handleReset}>
+              <RotateCcw size={16} />
+              <span>{t('settings.reset')}</span>
+            </button>
+            <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
+              <Save size={16} />
+              <span>{saving ? t('settings.saving') : t('settings.save')}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

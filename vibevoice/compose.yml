@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  vui-asr:
+    build: .
+    container_name: vui-asr
+    restart: unless-stopped
+    networks:
+      - vui
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_HOME=/root/.cache/huggingface
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ./cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  vui:
+    external: false
+    name: "vui"

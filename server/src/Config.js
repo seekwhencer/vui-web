@@ -45,6 +45,24 @@ const VAD_PARAM_KEYS = [
 ];
 
 /**
+ * LLM-Chat-Parameter (OpenAI-kompatible API / Ollama).
+ *
+ * Jede Zeile:
+ *   env       – Umgebungsvariable, die den Wert überschreibt
+ *   type      – 'string' | 'integer'
+ *   default   – Standardwert (wird in config.json geschrieben)
+ *
+ * Die Reihenfolge bestimmt die Reihenfolge in der UI.
+ */
+const LLM_PARAMS = {
+    api: { env: 'LLM_API', type: 'string', default: 'openai' },
+    host: { env: 'LLM_HOST', type: 'string', default: '' },
+    port: { env: 'LLM_PORT', type: 'integer', default: 8080 },
+    model: { env: 'LLM_MODEL', type: 'string', default: '' },
+    systemPrompt: { env: 'LLM_SYSTEM_PROMPT', type: 'string', default: 'You are a helpful assistant. Answer in markdown format.' },
+};
+
+/**
  * Loads and manages server configuration from environment variables and a config.json file.
  */
 class Config {
@@ -55,7 +73,7 @@ class Config {
     };
 
     /** Keys, die ohne Neustart wirksam werden (Bridge liest sie dynamisch). */
-    static runtimeKeys = ['verbose', 'whisper', 'badwords'];
+    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords'];
 
     /** Keys, die einen Neustart erfordern. */
     static restartKeys = ['serverPort', 'whisperHost', 'whisperPort'];
@@ -78,6 +96,9 @@ class Config {
 
         // Transkriptionsparameter: env > config.json > Default
         this.whisper = this.resolveWhisperParams(loaded);
+
+        // LLM-Chat-Parameter: env > config.json > Default
+        this.llm = this.resolveLlmParams(loaded);
 
         // Badword-Liste (serverseitig aus dem Transkript gefiltert)
         this.badwords = this.resolveBadwords(loaded);
@@ -173,6 +194,24 @@ class Config {
     }
 
     /**
+     * Ermittelt die LLM-Parameter: env > config.json > Default.
+     * @param {Record<string, unknown> | null} loaded
+     * @returns {Record<string, unknown>}
+     */
+    resolveLlmParams(loaded) {
+        const params = {};
+        for (const [key, spec] of Object.entries(LLM_PARAMS)) {
+            const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            const fromFile = loaded?.llm?.[key];
+            params[key] =
+                fromEnv !== undefined ? fromEnv
+                    : fromFile !== undefined ? fromFile
+                        : spec.default;
+        }
+        return params;
+    }
+
+    /**
      * Ermittelt die Badword-Liste: env > config.json > [].
      * @param {Record<string, unknown> | null} loaded
      * @returns {string[]}
@@ -197,6 +236,9 @@ class Config {
             whisper: Object.fromEntries(
                 Object.entries(WHISPER_PARAMS).map(([key, spec]) => [key, spec.default])
             ),
+            llm: Object.fromEntries(
+                Object.entries(LLM_PARAMS).map(([key, spec]) => [key, spec.default])
+            ),
             badwords: []
         };
         writeFileSync(this.configPath, JSON.stringify(defaults, null, 4), 'utf8');
@@ -213,6 +255,7 @@ class Config {
             whisperHost: this.whisperHost,
             whisperPort: this.whisperPort,
             whisper: { ...this.whisper },
+            llm: { ...this.llm },
             badwords: [...this.badwords]
         };
     }
@@ -233,6 +276,13 @@ class Config {
         for (const [key, spec] of Object.entries(WHISPER_PARAMS)) {
             const value = w[key];
             const err = this.validateWhisperParam(key, spec, value);
+            if (err) errors.push(err);
+        }
+
+        const l = s.llm || {};
+        for (const [key, spec] of Object.entries(LLM_PARAMS)) {
+            const value = l[key];
+            const err = this.validateLlmParam(key, spec, value);
             if (err) errors.push(err);
         }
 
@@ -285,6 +335,31 @@ class Config {
     }
 
     /**
+     * Validiert einen einzelnen LLM-Parameter.
+     * @param {string} key
+     * @param {{type: string}} spec
+     * @param {unknown} value
+     * @returns {string | null}
+     */
+    validateLlmParam(key, spec, value) {
+        const label = key;
+        switch (spec.type) {
+            case 'string':
+                if (typeof value !== 'string') return `${label} muss ein String sein`;
+                if (key === 'api' && !['openai', 'ollama'].includes(value))
+                    return `${label} muss 'openai' oder 'ollama' sein`;
+                break;
+            case 'integer': {
+                if (value === '') break; // leer → Standardwert
+                if (!Number.isInteger(value) || value < 1 || value > 65535)
+                    return `${label} muss eine Ganzzahl zwischen 1 und 65535 sein`;
+                break;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Wendet einen Partial-Patch an: validieren → mergen → persistieren → klassifizieren.
      * @param {Record<string, unknown>} patch
      * @returns {{ applied: string[], restartRequired: string[] }}
@@ -292,11 +367,12 @@ class Config {
     updateSettings(patch) {
         const current = this.getSettings();
 
-        // Deep-Merge für die verschachtelten Objekte (whisper, vadParameters)
+        // Deep-Merge für die verschachtelten Objekte (whisper, llm, vadParameters)
         const next = {
             ...current,
             ...patch,
             whisper: { ...current.whisper, ...(patch.whisper || {}) },
+            llm: { ...current.llm, ...(patch.llm || {}) },
             badwords: patch.badwords !== undefined ? patch.badwords : current.badwords
         };
 
@@ -314,6 +390,7 @@ class Config {
         this.whisperHost = next.whisperHost;
         this.whisperPort = next.whisperPort;
         this.whisper = { ...next.whisper };
+        this.llm = { ...next.llm };
         this.badwords = next.badwords.map((w) => String(w)).filter(Boolean);
 
         // Persistieren (config.json)
@@ -337,6 +414,7 @@ class Config {
                     whisperHost: this.whisperHost,
                     whisperPort: this.whisperPort,
                     whisper: this.whisper,
+                    llm: this.llm,
                     badwords: this.badwords
                 },
                 null,
@@ -347,4 +425,4 @@ class Config {
     }
 }
 
-export { Config, WHISPER_PARAMS, VAD_PARAM_KEYS };
+export { Config, WHISPER_PARAMS, LLM_PARAMS, VAD_PARAM_KEYS };

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import useTranscription from '../hooks/useTranscription.js';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -6,6 +7,7 @@ import TranscriptView from '../components/TranscriptView.jsx';
 
 export default function TranscriptionPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const {
     status,
     isRecording,
@@ -15,6 +17,13 @@ export default function TranscriptionPage() {
     stopRecording,
     clearTranscript,
   } = useTranscription();
+
+  const canSend = finalText.trim().length > 0;
+
+  const handleSendToChat = () => {
+    if (!canSend) return;
+    navigate('/chat', { state: { question: finalText } });
+  };
 
   return (
     <div className="transcription-page">
@@ -32,6 +41,17 @@ export default function TranscriptionPage() {
         />
 
         <TranscriptView finalText={finalText} interimText={interimText} />
+
+        <div className="transcription__actions">
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={!canSend}
+            onClick={handleSendToChat}
+          >
+            {t('transcription.sendToChat')}
+          </button>
+        </div>
       </div>
     </div>
   );

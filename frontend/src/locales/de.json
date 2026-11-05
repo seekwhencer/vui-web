@@ -5,7 +5,8 @@
     "start": "Aufnahme Starten",
     "stop": "Aufnahme Stoppen",
     "clear": "Leeren",
-    "micDenied": "Mikrofon-Zugriff wurde verweigert oder ist nicht verfügbar."
+    "micDenied": "Mikrofon-Zugriff wurde verweigert oder ist nicht verfügbar.",
+    "sendToChat": "An Chat senden"
   },
   "status": {
     "disconnected": "Getrennt",
@@ -13,11 +14,43 @@
     "recording": "Nimmt auf...",
     "error": "Fehler"
   },
+  "voice": {
+    "start": "Aufnahme starten",
+    "stop": "Aufnahme stoppen",
+    "listening": "Höre zu…",
+    "interim": "Erkannter Text",
+    "micDenied": "Mikrofonzugriff wurde verweigert."
+  },
   "theme": {
     "toggle": "Hell/Dunkel umschalten"
   },
   "language": {
     "label": "Sprache"
+  },
+  "chat": {
+    "title": "Chat",
+    "placeholder": "Frag etwas…",
+    "send": "Senden",
+    "thinking": "Gedanken anzeigen",
+    "hideThinking": "Gedanken ausblenden",
+    "empty": "Noch keine Nachrichten — frage oben etwas.",
+    "loading": "Denkt nach…",
+    "error": {
+      "network": "Verbindung zum Server fehlgeschlagen.",
+      "server": "Serverfehler, bitte versuche es erneut."
+    },
+    "history": {
+      "title": "Verlauf",
+      "clear": "Verlauf löschen",
+      "empty": "Noch keine Unterhaltungen.",
+      "delete": "Löschen"
+    }
+  },
+  "nav": {
+    "transcription": "Transkription",
+    "chat": "Chat",
+    "settings": "Einstellungen",
+    "about": "Über mich"
   },
   "settings": {
     "title": "Whisper-Einstellungen",
@@ -33,7 +66,8 @@
       "thresholds": "Schwellwerte",
       "context": "Kontext",
       "vad": "Spracherkennung (VAD)",
-      "badwords": "Badwords"
+      "badwords": "Badwords",
+      "llm": "LLM"
     },
     "fields": {
       "language": "Sprache",
@@ -59,7 +93,246 @@
       "vadWindow": "Fenstergröße (Samples)",
       "vadPad": "Sprech-Padding (ms)",
       "badwords": "Badwords (eine pro Zeile)",
-      "badwordsPlaceholder": "z. B.\nSpam\nWerbewort"
+      "badwordsPlaceholder": "z. B.\nSpam\nWerbewort",
+      "llmHost": "Host",
+      "llmPort": "Port",
+      "llmModel": "Modell",
+      "llmSystemPrompt": "System-Prompt"
+    }
+  },
+  "about": {
+    "title": "Über mich",
+    "hero": {
+      "name": "Matthias Kallenbach",
+      "role": "Senior Full-Stack Web Developer · IoT-Enthusiast · Local AI & Generative UI",
+      "intro1": "Node.js-fokussierter Full-Stack-Developer mit über 20 Jahren Erfahrung in der Entwicklung komplexer Webanwendungen. Ich liebe das Frontend und baue Dinge, die überall laufen: von kleinen Computern bis zu groß angelegten Cloud-nativen Setups. Und ich bin tief in Local AI drin.",
+      "intro2": "Ich erforsche generative UI — Interfaces, die sich um die Aufgabe herum zusammensetzen und anpassen, statt aus einem festen Satz an Bildschirmen zu bestehen. Und mir ist souveräne, on-prem AI wichtig: Modelle auf eigener Hardware laufen lassen, Daten, Stack und Autonomie in den eigenen Händen behalten."
+    },
+    "whatIdo": {
+      "title": "Was ich mache",
+      "items": [
+        {
+          "title": "Frontend Engineering",
+          "desc": "Performante, wartbare UI-Systeme mit HTML, CSS, JavaScript, TypeScript, Web Components und React."
+        },
+        {
+          "title": "Full-Stack & Node.js",
+          "desc": "APIs, Microservices, Systemintegration, Docker, CI/CD-Pipelines."
+        },
+        {
+          "title": "IoT & Edge Computing",
+          "desc": "Raspberry Pi, ESP32, MQTT, Smart Home, Sensor- und Aktor-Setups."
+        },
+        {
+          "title": "Local AI",
+          "desc": "llama.cpp, Ollama, RAG, MCP — große Modelle auf eigener Hardware."
+        }
+      ]
+    },
+    "competencies": {
+      "title": "Kernkompetenzen",
+      "items": [
+        "Frontend Engineering & UI-Architektur",
+        "Full-Stack-Entwicklung mit Node.js",
+        "API-Entwicklung & Microservices",
+        "Systemintegration & Interface-Engineering",
+        "IoT & Edge Computing",
+        "Smart Home & Sensorik",
+        "Local AI & RAG",
+        "Docker & Containerisierung",
+        "CI/CD & Deployment-Automatisierung",
+        "Performance-Optimierung",
+        "Technisches Consulting & Architektur",
+        "Mentoring & Teamführung",
+        "Kundenkommunikation & Projektmanagement"
+      ]
+    },
+    "techStack": {
+      "title": "Tech-Stack",
+      "items": [
+        "JavaScript",
+        "TypeScript",
+        "Node.js",
+        "React",
+        "Web Components",
+        "Vite",
+        "Docker",
+        "Raspberry Pi",
+        "ESP32",
+        "MQTT",
+        "Grafana",
+        "MariaDB",
+        "InfluxDB",
+        "llama.cpp",
+        "opencode",
+        "MCP",
+        "RAG",
+        "Qdrant"
+      ]
+    },
+    "projects": {
+      "title": "Aktuelle Projekte",
+      "items": [
+        {
+          "name": "vui-web",
+          "desc": "Self-hosted, Echtzeit-Speech-to-Text-Webapp — Browser-Mikrofon-Aufnahme, WebSocket-Streaming zu einem Node.js-Server, Transkription mit faster-whisper auf lokaler GPU. Keine Cloud, keine API-Keys.",
+          "url": "https://github.com/seekwhencer/vui-web"
+        },
+        {
+          "name": "mediamtx-ui",
+          "desc": "Web-basiertes Admin-Dashboard für den MediaMTX-Streaming-Server — Konfiguration, Laufzeit, Metriken, Aufnahmen und Live-Logs.",
+          "url": "https://github.com/seekwhencer/mediamtx-ui"
+        },
+        {
+          "name": "gitea-qdrant-sync",
+          "desc": "RAG + MCP + Web-UI: semantische Suche über Markdown-Dateien in Gitea, angetrieben von lokalen LLMs (Ollama / llama.cpp) und Qdrant.",
+          "url": "https://github.com/seekwhencer/gitea-qdrant-sync"
+        },
+        {
+          "name": "node-rtl433-ui",
+          "desc": "Grafische Web-UI, um 433-MHz-Gerätewerte auf MQTT-Topics abzubilden, mit einem Node.js-Server als MQTT-Client.",
+          "url": "https://github.com/seekwhencer/node-rtl433-ui"
+        }
+      ]
+    },
+    "moreProjects": {
+      "title": "Weitere Projekte",
+      "items": [
+        {
+          "name": "node-radio-automation",
+          "desc": "Automatische Radiostream-Erzeugung nach Zeitplan; Orchestrierung mehrerer Playlist-Audiostreams mit Hot-Rotation, Intros, Spots und Podcasts.",
+          "url": "https://github.com/seekwhencer/node-radio-automation"
+        },
+        {
+          "name": "nodejs-tesseract-imagemagick-docker",
+          "desc": "Node.js-App + Docker-Setup zur OCR von Kontoauszügen (Tesseract + ImageMagick) in strukturierte Daten.",
+          "url": "https://github.com/seekwhencer/nodejs-tesseract-imagemagick-docker"
+        },
+        {
+          "name": "nodemcu-lightdome",
+          "desc": "Eigenes IoT-Gerät zur 360°-Lichtmessung mit vier LDRs, veröffentlicht auf MQTT.",
+          "url": "https://github.com/seekwhencer/nodemcu-lightdome"
+        },
+        {
+          "name": "skwncr-kachelcast-panel",
+          "desc": "Grafana-Panel-Plugin (React) für Wettervorhersage.",
+          "url": "https://github.com/seekwhencer/skwncr-kachelcast-panel"
+        },
+        {
+          "name": "node-mqtt-transponder",
+          "desc": "MQTT-Transponder, gebaut mit Node.js.",
+          "url": "https://github.com/seekwhencer/node-mqtt-transponder"
+        },
+        {
+          "name": "gamepad-browser-mqtt",
+          "desc": "Liest einen Gamecontroller im Browser aus und sendet die Daten an einen MQTT-Broker.",
+          "url": "https://github.com/seekwhencer/gamepad-browser-mqtt"
+        },
+        {
+          "name": "bundesapi-jobsuche-client",
+          "desc": "Web-Client für die Stellen-Such-API der Bundesagentur für Arbeit.",
+          "url": "https://github.com/seekwhencer/bundesapi-jobsuche-client"
+        },
+        {
+          "name": "ffmpeg-rekorder",
+          "desc": "Raspberry-Pi-Setup für einen IP-Kamera-Recorder.",
+          "url": "https://github.com/seekwhencer/ffmpeg-rekorder"
+        },
+        {
+          "name": "drone-boat-dashboard",
+          "desc": "Open Research Buoy: Echtzeitsteuerung eines Citizen-Science-Buoys über Mobilfunk und WebSockets.",
+          "url": "https://github.com/seekwhencer/drone-boat-dashboard"
+        },
+        {
+          "name": "node-image-server-gallery",
+          "desc": "Bildgalerie-Server mit Node.js: Bildbrowser mit On-Demand-Thumbnail-Erzeugung.",
+          "url": "https://github.com/seekwhencer/node-image-server-gallery"
+        },
+        {
+          "name": "tech-radar-server",
+          "desc": "Refactoring von Amazons Tech-Radar mit Three.js.",
+          "url": "https://github.com/seekwhencer/tech-radar-server"
+        },
+        {
+          "name": "skwncr",
+          "desc": "Meine eigene Website: Vanilla JavaScript trifft Web Components. SSR/CSR-Frontend, Datenlayer, Server (SSR, Thumbnails, PDF), alles in einem Docker-Image.",
+          "url": "https://github.com/seekwhencer/skwncr"
+        }
+      ]
+    },
+    "experience": {
+      "title": "Erfahrung",
+      "items": [
+        {
+          "role": "Freelancer / Senior Frontend Engineer",
+          "period": "2023 → heute",
+          "desc": "Eigene Projekte, Web Components, Local AI, eigene Website & Infrastruktur."
+        },
+        {
+          "role": "SYNERGY-NETWORKS GmbH",
+          "period": "2020 → 2022",
+          "desc": "Shopware-Themes, dockerisierte Build-Pipelines, Shop-Relaunch."
+        },
+        {
+          "role": "Neofonie GmbH / mobile.de",
+          "period": "2017 → 2020",
+          "desc": "Frontend-Module für einen großen Marktplatz, Cloud-Migration von (Micro-)Services."
+        },
+        {
+          "role": "Freelance & Agenturarbeit",
+          "period": "2008 → 2017",
+          "desc": "Corporate-Websites, Build-Pipelines, Frontend-Tooling."
+        },
+        {
+          "role": "XEBEC Mediafactory GmbH (Mitgründer)",
+          "period": "1999 → 2002",
+          "desc": "Online-Vertriebsplattform, Corporate-Website, VRML-Produktionslinie."
+        },
+        {
+          "role": "TV- & Videoproduktion (selbstständig)",
+          "period": "1991 → 1999",
+          "desc": "3D-Animation, Broadcast-Engineering, Live-Sportkamera."
+        }
+      ]
+    },
+    "education": {
+      "title": "Ausbildung",
+      "items": [
+        {
+          "degree": "Digitale Medien (Studium Digitale Medien)",
+          "school": "Hochschule für Künste (HfK) Bremen",
+          "period": "2003 → 2008",
+          "desc": "Design × IT-Crossover; Kurse an der Uni Bremen (Informatik) und HfK Bremen (Design)."
+        },
+        {
+          "degree": "Fachabitur Gestaltung",
+          "school": "Adolph-Kolping-Schule, Münster",
+          "period": "2002 → 2003",
+          "desc": ""
+        }
+      ]
+    },
+    "contact": {
+      "title": "Kontakt",
+      "location": "Britz (16230), bei Eberswalde — ca. 60 km nördlich von Berlin, gut erreichbar für Vor-Ort-Arbeit.",
+      "links": [
+        {
+          "label": "skwncr.net",
+          "url": "https://skwncr.net"
+        },
+        {
+          "label": "LinkedIn",
+          "url": "https://www.linkedin.com/in/matthias-kallenbach-165860158/"
+        },
+        {
+          "label": "matthias.kallenbach@skwncr.net",
+          "url": "mailto:matthias.kallenbach@skwncr.net"
+        },
+        {
+          "label": "YouTube",
+          "url": "https://www.youtube.com/channel/UC8ynXP1riHqv8sXxRNPwkLg"
+        }
+      ]
     }
   }
 }

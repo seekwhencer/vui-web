@@ -2,6 +2,7 @@
 import express from 'express';
 import { FrontendRouter } from './FrontendRouter.js';
 import { TranscribeBridge } from '../Bridge/TranscribeBridge.js';
+import { Llm } from '../Llm.js';
 
 /**
  * Main router class that aggregates all server routes.
@@ -24,6 +25,9 @@ class Router {
         // WebSocket-Bridge für Live-Transkription (noServer, Upgrade wird
         // in setupUpgradeRouting gezielt hierher geroutet).
         this.transcribeBridge = new TranscribeBridge(this.config, this.logger);
+
+        // LLM-Chat-Service (liest config.llm dynamisch zur Aufrufzeit).
+        this.llm = new Llm({ config: this.config, logger: this.logger });
     }
 
     /**
@@ -54,6 +58,81 @@ class Router {
             }
         });
 
+        // Chat-API: Non-Streaming + SSE-Streaming.
+        // Der Llm-Service liest config.llm dynamisch → Settings-Änderungen wirken sofort.
+        this.router.post('/api/chat', async (req, res) => {
+            const question = req.body?.question;
+            if (typeof question !== 'string' || question.trim() === '') {
+                return res.status(400).json({ success: false, error: 'Missing "question" in request body' });
+            }
+            if (!this.config.llm?.host) {
+                return res.status(503).json({ success: false, error: 'LLM is not configured. Set LLM_HOST.' });
+            }
+
+            try {
+                const messages = this.buildChatMessages(question, req.body?.history);
+                const answer = await this.llm.chat(messages);
+                res.status(200).json({ success: true, data: { answer } });
+            } catch (err) {
+                this.logger.error(this.label, 'Chat fehlgeschlagen', { error: err.message });
+                res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
+            }
+        });
+
+        this.router.post('/api/chat/stream', async (req, res) => {
+            const question = req.body?.question;
+            if (typeof question !== 'string' || question.trim() === '') {
+                return res.status(400).json({ success: false, error: 'Missing "question" in request body' });
+            }
+            // 503 VOR den SSE-Headern → Client erhält normales JSON, keinen kaputten Stream.
+            if (!this.config.llm?.host) {
+                return res.status(503).json({ success: false, error: 'LLM is not configured. Set LLM_HOST.' });
+            }
+
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive',
+                'X-Accel-Buffering': 'no'
+            });
+
+            const send = (event, data) => {
+                if (res.writableEnded) return false;
+                res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+                return true;
+            };
+
+            // Client-Abbruch → Stream abbrechen (AbortController).
+            const controller = new AbortController();
+            res.on('close', () => controller.abort());
+
+            const messages = this.buildChatMessages(question, req.body?.history);
+            try {
+                for await (const { phase, token } of this.llm.streamChat(messages, { signal: controller.signal })) {
+                    if (res.writableEnded) break;
+                    if (send(phase, token) === false) break;
+                }
+                if (!res.writableEnded) {
+                    send('done', {});
+                    res.end();
+                }
+            } catch (err) {
+                // Client-Abbruch (AbortController) → axios wirft CanceledError,
+                // nativer Fetch wirft AbortError. Beides ist kein echter Fehler.
+                const isAbort = err && (
+                    err.name === 'AbortError' ||
+                    err.name === 'CanceledError' ||
+                    err.code === 'ERR_CANCELED'
+                );
+                if (isAbort) return;
+                this.logger.error(this.label, 'Chat-Streaming fehlgeschlagen', { error: err.message });
+                if (!res.writableEnded) {
+                    send('error', { message: err?.message || 'Streaming fehlgeschlagen' });
+                    res.end();
+                }
+            }
+        });
+
         const frontendRouter = new FrontendRouter(this.config, this.httpServer, this.logger);
         await frontendRouter.init();
         this.router.use('/', frontendRouter.router);
@@ -61,6 +140,33 @@ class Router {
         // WebSocket-Upgrade-Routing (MUSST nach Vite-Init, damit Vites
         // eigener HMR-Listener zuerst dran ist und fremde Upgrades nicht bricht).
         this.setupUpgradeRouting();
+    }
+
+    /**
+     * Baut die Chat-Nachrichten in der Reihenfolge:
+     * System-Prompt → History → aktuelle Frage.
+     * @param {string} question - Die aktuelle Frage
+     * @param {Array<{role: string, content: string}>} [history] - Optionale frühere Nachrichten
+     * @returns {Array<{role: string, content: string}>}
+     */
+    buildChatMessages(question, history) {
+        const messages = [];
+
+        const systemPrompt = this.config.llm?.systemPrompt;
+        if (systemPrompt) {
+            messages.push({ role: 'system', content: systemPrompt });
+        }
+
+        if (Array.isArray(history)) {
+            for (const msg of history) {
+                if (msg && typeof msg.role === 'string' && typeof msg.content === 'string') {
+                    messages.push({ role: msg.role, content: msg.content });
+                }
+            }
+        }
+
+        messages.push({ role: 'user', content: question });
+        return messages;
     }
 
     /**

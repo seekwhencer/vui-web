@@ -1,11 +1,33 @@
 .topbar {
   position: fixed;
-  top: var(--space-3);
-  right: var(--space-3);
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 100;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.topbar__brand {
+  justify-self: start;
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-primary);
+  user-select: none;
+}
+
+.topbar__actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  justify-self: end;
 }
 
 .topbar__btn {
@@ -71,4 +93,41 @@
   line-height: 1;
   cursor: pointer;
   padding: 0;
+}
+
+.topnav {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 36px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-alt);
+  box-shadow: var(--shadow-sm);
+}
+
+.topnav__link {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.topnav__link:hover {
+  background-color: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.topnav__link--active {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
 }

@@ -1,97 +1,64 @@
-/* Topbar-Button: aktiver Zustand */
-.topbar__btn.is-active {
-  background-color: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-
-.topbar__btn.is-active:hover {
-  background-color: var(--color-primary-hover);
-  color: #fff;
-}
-
-/* Overlay + Panel */
-.settings-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
+/* Settings-Seite */
+.settings-page {
   display: flex;
-  align-items: flex-start;
   justify-content: center;
-  padding: var(--space-6) var(--space-4);
-  overflow-y: auto;
-}
-
-.settings-overlay__backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: calc(var(--space-12) + var(--space-4)) var(--space-5) var(--space-8);
 }
 
 .settings {
-  position: relative;
-  z-index: 1;
   width: 100%;
-  max-width: 640px;
-  margin-top: var(--space-4);
+  max-width: 720px;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - var(--space-8));
 }
 
 .settings__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-5) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
-.settings__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: background-color var(--transition), color var(--transition);
+/* Tabs: eine Gruppe = ein Tab */
+.settings__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.settings__close:hover {
+.settings__tab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.settings__tab:hover {
   background-color: var(--color-surface-alt);
   color: var(--color-text);
 }
 
+.settings__tab--active {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
 .settings__body {
-  padding: var(--space-4) var(--space-5);
-  overflow-y: auto;
-  flex: 1;
-}
-
-.settings__section {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-3) var(--space-4) var(--space-4);
-  margin: 0 0 var(--space-4);
-}
-
-.settings__section legend {
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--color-text-secondary);
-  padding: 0 var(--space-2);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  padding: var(--space-5) var(--space-6);
 }
 
 .settings__grid {
@@ -101,8 +68,8 @@
 }
 
 .settings__grid--sub {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px dashed var(--color-border);
 }
 
@@ -174,7 +141,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-border);
   flex-wrap: wrap;
 }

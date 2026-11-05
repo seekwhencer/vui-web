@@ -5,7 +5,6 @@ const TABS = [
   { to: '/', labelKey: 'nav.transcription', end: true },
   { to: '/chat', labelKey: 'nav.chat' },
   { to: '/settings', labelKey: 'nav.settings' },
-  { to: '/about', labelKey: 'nav.about' },
 ];
 
 export default function TopNav() {

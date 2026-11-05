@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import TranscriptionPage from './pages/TranscriptionPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -11,7 +11,7 @@ export default function App() {
   return (
     <>
       <header className="topbar">
-        <span className="topbar__brand">VUI</span>
+        <Link to="/about" className="topbar__brand">VUI</Link>
         <TopNav />
         <div className="topbar__actions">
           <ThemeToggle />

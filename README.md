@@ -118,6 +118,7 @@ Open the gear icon in the top bar to tune the model live. Changes apply immediat
 - **Kontext** — initial prompt, hotwords
 - **VAD** — voice-activity-detection filter + parameters
 - **Badwords** — words to strip from the transcript
+- **UI** — roundness + primary color (frontend-only, saved locally in the browser)
 
 ## API
 
@@ -189,6 +190,7 @@ cd server && npm test          # vitest
 | Settings — VAD | <img src=".docs/screenshots/settings-voice-activity-detection-dark.png" alt="Settings VAD (dark)" width="360"> | <img src=".docs/screenshots/settings-voice-activity-detection-light.png" alt="Settings VAD (light)" width="360"> |
 | Settings — LLM | <img src=".docs/screenshots/settings-llm-dark.png" alt="Settings LLM (dark)" width="360"> | <img src=".docs/screenshots/settings-llm-light.png" alt="Settings LLM (light)" width="360"> |
 | Settings — Badwords | <img src=".docs/screenshots/settings-badwords-dark.png" alt="Settings Badwords (dark)" width="360"> | <img src=".docs/screenshots/settings-badwords-light.png" alt="Settings Badwords (light)" width="360"> |
+| Settings — UI | <img src=".docs/screenshots/settings-ui-dark.png" alt="Settings UI (dark)" width="360"> | <img src=".docs/screenshots/settings-ui-light.png" alt="Settings UI (light)" width="360"> |
 
 ## License
 

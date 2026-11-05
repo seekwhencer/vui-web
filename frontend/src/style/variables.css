@@ -32,7 +32,7 @@
   --radius: calc(10px * var(--radius-factor));
   --radius-lg: calc(14px * var(--radius-factor));
   --radius-xl: calc(20px * var(--radius-factor));
-  --radius-pill: calc(999px * var(--radius-factor));
+  --radius-pill: calc(20px * var(--radius-factor));
 
   /* Depth */
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);

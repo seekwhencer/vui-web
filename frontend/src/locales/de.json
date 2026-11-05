@@ -60,6 +60,7 @@
     "saving": "Wird gespeichert...",
     "saved": "Gespeichert",
     "reset": "Zurücksetzen",
+    "uiHint": "Wird sofort angewendet und lokal gespeichert",
     "sections": {
       "basic": "Basis",
       "decoding": "Decoding",
@@ -67,7 +68,8 @@
       "context": "Kontext",
       "vad": "Spracherkennung (VAD)",
       "badwords": "Badwords",
-      "llm": "LLM"
+      "llm": "LLM",
+      "ui": "UI"
     },
     "fields": {
       "language": "Sprache",
@@ -97,7 +99,9 @@
       "llmHost": "Host",
       "llmPort": "Port",
       "llmModel": "Modell",
-      "llmSystemPrompt": "System-Prompt"
+      "llmSystemPrompt": "System-Prompt",
+      "radiusFactor": "Rundheit",
+      "primaryHue": "Primärfarbe"
     }
   },
   "about": {

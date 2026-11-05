@@ -231,26 +231,6 @@
   margin-top: var(--space-5);
 }
 
-.chat-input__textarea {
-  flex: 1;
-  min-height: 72px;
-  font-family: inherit;
-  font-size: var(--fs-md);
-  line-height: 1.5;
-  color: var(--color-text);
-  background-color: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  resize: vertical;
-  transition: border-color var(--transition), background-color var(--transition);
-}
-
-.chat-input__textarea:focus {
-  border-color: var(--color-primary);
-  background-color: var(--color-surface);
-}
-
 /* Voice-Steuerung (Mic + Status + Interim) */
 .voice-controls {
   display: flex;
@@ -267,8 +247,6 @@
   padding: var(--space-2) var(--space-4);
   border: none;
   border-radius: var(--radius-pill);
-  background-color: var(--color-primary);
-  color: #fff;
   font-family: inherit;
   font-size: var(--fs-sm);
   font-weight: 600;

@@ -17,7 +17,7 @@ export default function VoiceControls({ isRecording, micStatus, interimText, onT
     <div className="voice-controls">
       <button
         type="button"
-        className={`voice-controls__mic${isRecording ? ' voice-controls__mic--recording' : ''}`}
+        className={`voice-controls__mic${isRecording ? ' voice-controls__mic--recording' : ''} btn btn--primary`}
         onClick={onToggle}
         aria-label={isRecording ? t('voice.stop') : t('voice.start')}
       >

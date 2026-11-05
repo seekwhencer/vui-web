@@ -85,18 +85,6 @@
   flex: none;
 }
 
-.topbar__lang-select {
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-
 .topnav {
   justify-self: center;
   display: inline-flex;

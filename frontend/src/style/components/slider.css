@@ -1,0 +1,62 @@
+/* ===== Slider ===== */
+.ui-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ui-slider__label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ui-slider__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.ui-slider__track-wrap {
+  position: relative;
+  flex: 1;
+  height: 16px;
+}
+
+.ui-slider__track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+}
+
+.ui-slider__range {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
+.ui-slider__swatch {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-slider__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
+  min-width: 4ch;
+  text-align: right;
+}

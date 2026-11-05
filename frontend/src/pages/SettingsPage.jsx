@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Save, RotateCcw } from 'lucide-react';
 import useSettings from '../hooks/useSettings.js';
+import Slider from '../components/ui/Slider.jsx';
+import { useAppSettings, setAppSettings, resetAppSettings } from '../services/appSettings.js';
+import { primaryColorForHue } from '../utils/primaryColor.js';
+import { radiusForFactor } from '../utils/radius.js';
 
 /**
  * Feld-Definitionen, gruppiert in Sektionen.
@@ -75,9 +79,11 @@ const SECTIONS = [
 ];
 
 // Badwords ist ein eigener Tab (kein Whisper/LLM-Gruppenfeld).
+// UI ist ein eigener Tab (nur Frontend, lokal gespeichert — kein Server-Save).
 const TABS = [
   ...SECTIONS.map((s) => ({ id: s.id, title: s.title })),
   { id: 'badwords', title: 'settings.sections.badwords' },
+  { id: 'ui', title: 'settings.sections.ui' },
 ];
 
 /** temperature-Array ↔ Komma-String für das Textfeld. */
@@ -95,6 +101,7 @@ function stringToTemp(str) {
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { settings, saving, error, save } = useSettings();
+  const appSettings = useAppSettings();
 
   const [activeTab, setActiveTab] = useState('basic');
   const [draft, setDraft] = useState(null); // { whisper: {...}, llm: {...}, badwords: string }
@@ -278,7 +285,32 @@ export default function SettingsPage() {
         </div>
 
         <div className="settings__body" role="tabpanel">
-          {activeTab === 'badwords' ? (
+          {activeTab === 'ui' ? (
+            <div className="settings__grid">
+              <Slider
+                id="ui-radius"
+                name="radiusFactor"
+                label={t('settings.fields.radiusFactor')}
+                value={appSettings.radiusFactor}
+                min={0}
+                max={1}
+                step={0.1}
+                onChange={(v) => setAppSettings({ radiusFactor: v })}
+                previewStyle={{ borderRadius: radiusForFactor(appSettings.radiusFactor) }}
+              />
+              <Slider
+                id="ui-primary"
+                name="primaryHue"
+                label={t('settings.fields.primaryHue')}
+                value={appSettings.primaryHue}
+                min={0}
+                max={360}
+                step={1}
+                onChange={(v) => setAppSettings({ primaryHue: v })}
+                previewStyle={{ backgroundColor: primaryColorForHue(appSettings.primaryHue) }}
+              />
+            </div>
+          ) : activeTab === 'badwords' ? (
             <label className="settings__field settings__field--full">
               <span>{t('settings.fields.badwords')}</span>
               <textarea
@@ -325,18 +357,32 @@ export default function SettingsPage() {
         </div>
 
         <div className="settings__footer">
-          {error && <span className="settings__error">{error}</span>}
-          {saved && !error && <span className="settings__saved">{t('settings.saved')}</span>}
-          <div className="settings__actions">
-            <button type="button" className="btn btn--secondary" onClick={handleReset}>
-              <RotateCcw size={16} />
-              <span>{t('settings.reset')}</span>
-            </button>
-            <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
-              <Save size={16} />
-              <span>{saving ? t('settings.saving') : t('settings.save')}</span>
-            </button>
-          </div>
+          {activeTab === 'ui' ? (
+            <>
+              <span className="settings__saved">{t('settings.uiHint')}</span>
+              <div className="settings__actions">
+                <button type="button" className="btn btn--secondary" onClick={() => resetAppSettings()}>
+                  <RotateCcw size={16} />
+                  <span>{t('settings.reset')}</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {error && <span className="settings__error">{error}</span>}
+              {saved && !error && <span className="settings__saved">{t('settings.saved')}</span>}
+              <div className="settings__actions">
+                <button type="button" className="btn btn--secondary" onClick={handleReset}>
+                  <RotateCcw size={16} />
+                  <span>{t('settings.reset')}</span>
+                </button>
+                <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
+                  <Save size={16} />
+                  <span>{saving ? t('settings.saving') : t('settings.save')}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

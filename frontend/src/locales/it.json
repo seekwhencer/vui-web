@@ -60,6 +60,7 @@
     "saving": "Salvataggio...",
     "saved": "Salvato",
     "reset": "Reimposta",
+    "uiHint": "Applicato immediatamente e salvato localmente",
     "sections": {
       "basic": "Base",
       "decoding": "Decodifica",
@@ -67,7 +68,8 @@
       "context": "Contesto",
       "vad": "Rilevamento voce (VAD)",
       "badwords": "Parole da filtrare",
-      "llm": "LLM"
+      "llm": "LLM",
+      "ui": "UI"
     },
     "fields": {
       "language": "Lingua",
@@ -97,7 +99,9 @@
       "llmHost": "Host",
       "llmPort": "Porta",
       "llmModel": "Modello",
-      "llmSystemPrompt": "Prompt di sistema"
+      "llmSystemPrompt": "Prompt di sistema",
+      "radiusFactor": "Arrotondamento",
+      "primaryHue": "Colore primario"
     }
   },
   "about": {

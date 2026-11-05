@@ -9,7 +9,7 @@
 
 .settings {
   width: 100%;
-  max-width: 720px;
+  max-width: 800px;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -85,55 +85,12 @@
   grid-column: 1 / -1;
 }
 
-.settings__field input[type='text'],
-.settings__field input[type='number'] {
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  color: var(--color-text);
-  background-color: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  transition: border-color var(--transition), background-color var(--transition);
-}
-
-.settings__field input[type='text']:focus,
-.settings__field input[type='number']:focus {
-  border-color: var(--color-primary);
-  background-color: var(--color-surface);
-}
-
 .settings__field--check {
   flex-direction: row;
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
   color: var(--color-text);
-}
-
-.settings__field--check input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--color-primary);
-  cursor: pointer;
-}
-
-.settings__textarea {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  color: var(--color-text);
-  background-color: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  resize: vertical;
-  min-height: 90px;
-  transition: border-color var(--transition), background-color var(--transition);
-}
-
-.settings__textarea:focus {
-  border-color: var(--color-primary);
-  background-color: var(--color-surface);
 }
 
 .settings__footer {

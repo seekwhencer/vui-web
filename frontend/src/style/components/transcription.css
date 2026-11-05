@@ -1,8 +1,6 @@
 .transcription-page {
   display: flex;
   justify-content: center;
-  align-items: center;
-  min-height: 100vh;
   padding: calc(var(--space-12) + var(--space-4)) var(--space-5) var(--space-5);
 }
 
@@ -11,7 +9,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 650px;
+  max-width: 800px;
   padding: var(--space-6);
   box-shadow: var(--shadow-md);
 }
@@ -65,49 +63,6 @@
   display: flex;
   gap: var(--space-3);
   margin-bottom: var(--space-5);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-5);
-  border-radius: var(--radius-pill);
-  border: none;
-  font-family: inherit;
-  font-size: var(--fs-md);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--transition), color var(--transition);
-}
-
-.btn--primary {
-  background-color: var(--color-primary);
-  color: #fff;
-}
-
-.btn--primary:hover {
-  background-color: var(--color-primary-hover);
-}
-
-.btn--primary.is-recording {
-  background-color: var(--color-error);
-}
-
-.btn--primary.is-recording:hover {
-  background-color: color-mix(in srgb, var(--color-error) 85%, black);
-}
-
-.btn--secondary {
-  background-color: transparent;
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-}
-
-.btn--secondary:hover {
-  background-color: var(--color-surface-alt);
-  color: var(--color-text);
 }
 
 .transcript {

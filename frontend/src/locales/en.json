@@ -60,6 +60,7 @@
     "saving": "Saving...",
     "saved": "Saved",
     "reset": "Reset",
+    "uiHint": "Applied immediately and saved locally",
     "sections": {
       "basic": "Basic",
       "decoding": "Decoding",
@@ -67,7 +68,8 @@
       "context": "Context",
       "vad": "Voice Activity Detection",
       "badwords": "Badwords",
-      "llm": "LLM"
+      "llm": "LLM",
+      "ui": "UI"
     },
     "fields": {
       "language": "Language",
@@ -97,7 +99,9 @@
       "llmHost": "Host",
       "llmPort": "Port",
       "llmModel": "Model",
-      "llmSystemPrompt": "System prompt"
+      "llmSystemPrompt": "System prompt",
+      "radiusFactor": "Roundness",
+      "primaryHue": "Primary color"
     }
   },
   "about": {

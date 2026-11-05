@@ -67,11 +67,15 @@ async function shot(page, file) {
     await page.waitForTimeout(900);
     await shot(page, path.join(OUT, `chat-${theme}.png`));
 
-    // 3) Settings page: one screenshot per tab
+    // 3) Settings page: one screenshot per tab (incl. the frontend-only "UI" tab)
     await goto(page, BASE + '/settings');
     const settingsTab = page.locator('.settings__tab');
     await settingsTab.first().waitFor({ timeout: 15000 });
+    const expectedTabs = ['basic', 'decoding', 'thresholds', 'context', 'vad', 'llm', 'badwords', 'ui'];
     const tabCount = await settingsTab.count();
+    if (tabCount !== expectedTabs.length) {
+      throw new Error(`Expected ${expectedTabs.length} settings tabs (${expectedTabs.join(', ')}), found ${tabCount}`);
+    }
     for (let i = 0; i < tabCount; i++) {
       await settingsTab.nth(i).click();
       await page.waitForFunction(

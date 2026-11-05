@@ -53,7 +53,7 @@
     "about": "About"
   },
   "settings": {
-    "title": "Whisper Settings",
+    "title": "Settings",
     "toggle": "Open settings",
     "close": "Close settings",
     "save": "Save",

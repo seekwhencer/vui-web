@@ -43,8 +43,11 @@
       "title": "Cronologia",
       "clear": "Svuota cronologia",
       "empty": "Nessuna conversazione.",
-      "delete": "Elimina"
-    }
+      "delete": "Elimina",
+      "close": "Chiudi"
+    },
+    "clear": "Cancella conversazione",
+    "new": "Nuova conversazione"
   },
   "nav": {
     "transcription": "Trascrizione",

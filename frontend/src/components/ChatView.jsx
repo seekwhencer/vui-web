@@ -11,71 +11,90 @@ function errorMessage(t, error) {
 }
 
 /**
- * Zeigt den aktuellen Chat-Stand: Thinking (ThinkBlock) + Antwort (Markdown).
+ * Zeigt den kompletten Chatverlauf: alle Turns (User + Assistant) in
+ * zeitlicher Reihenfolge. Der laufende Turn (pending) zeigt den Live-Stream
+ * (thinking/answer) aus `useChatStream`.
  *
- * Props (State von `useChatStream`):
- * thinking, answer, question, pending, error, done
+ * Props:
+ * - items          → Array { id, question, answer, thinking, error, pending } (älteste zuerst)
+ * - thinking       → Live-Thinking des laufenden Turns
+ * - answer         → Live-Antwort des laufenden Turns
+ * - error          → Live-Fehler des laufenden Turns (Error-Objekt)
+ * - conversationId → id der angezeigten Konversation (Wechsel → ans Ende scrollen)
  */
-export default function ChatView({ thinking, answer, question, pending, error, done }) {
+export default function ChatView({ items, thinking, answer, error, conversationId }) {
   const { t } = useTranslation();
-  const sectionRef = useRef(null);
+  const listRef = useRef(null);
+  const prevCountRef = useRef(0);
+
+  const turns = items || [];
+
+  // Konversations-Wechsel: ans Ende springen (neueste Nachricht).
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [conversationId]);
 
   useLayoutEffect(() => {
-    const el = sectionRef.current;
-    if (el) {
+    const el = listRef.current;
+    if (!el) return;
+
+    // Neuer Turn → immer ans Ende springen.
+    if (turns.length !== prevCountRef.current) {
+      prevCountRef.current = turns.length;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+
+    // Streaming: nur folgen, wenn der Nutzer bereits unten ist.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    if (nearBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [thinking, answer]);
+  }, [turns.length, thinking, answer]);
 
-  if (error) {
+  if (turns.length === 0) {
     return (
-      <section ref={sectionRef} className="chat-view chat-view__error" aria-live="polite">
-        <p className="chat-view__error-text">{errorMessage(t, error)}</p>
-      </section>
-    );
-  }
-
-  const streaming = pending && !done;
-
-  if (streaming && !thinking && !answer) {
-    return (
-      <section ref={sectionRef} className="chat-view chat-view__loading" aria-live="polite">
-        {question && <p className="chat-view__question">{question}</p>}
-        <div className="chat-view__loading-flex">
-          <span className="spinner" role="status" aria-hidden="true" />
-          <p className="chat-view__loading-text">{t('chat.loading')}</p>
-        </div>
-      </section>
-    );
-  }
-
-  if (done && !thinking && !answer) {
-    return (
-      <section ref={sectionRef} className="chat-view chat-view__empty" aria-live="polite">
+      <section className="chat-view chat-view__empty" aria-live="polite">
         <p className="chat-view__empty-text">{t('chat.empty')}</p>
       </section>
     );
   }
 
-  if (answer || thinking) {
-    return (
-      <section ref={sectionRef} className="chat-view" aria-live="polite">
-        {question && <p className="chat-view__question">{question}</p>}
-        <div className="chat-view__answer">
-          {thinking && <ThinkBlock content={thinking} />}
-          {answer ? (
-            <MarkdownRenderer text={answer} />
-          ) : streaming ? (
-            <span className="answer__cursor" aria-hidden="true" />
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section ref={sectionRef} className="chat-view chat-view__empty" aria-live="polite">
-      <p className="chat-view__empty-text">{t('chat.empty')}</p>
+    <section ref={listRef} className="chat-view" aria-live="polite">
+      {turns.map((item) => {
+        const isLive = Boolean(item.pending);
+        const itemThinking = isLive ? thinking : item.thinking || '';
+        const itemAnswer = isLive ? answer : item.answer || '';
+        const itemError = isLive
+          ? (error ? errorMessage(t, error) : null)
+          : (item.error || null);
+
+        return (
+          <div className="turn" key={item.id} data-turn-id={item.id}>
+            <div className="msg msg--user">
+              <div className="msg__bubble">{item.question}</div>
+            </div>
+
+            <div className="msg msg--assistant">
+              {itemThinking && <ThinkBlock content={itemThinking} />}
+              {itemError ? (
+                <p className="chat-view__error-text">{itemError}</p>
+              ) : itemAnswer ? (
+                <div className="msg__bubble">
+                  <MarkdownRenderer text={itemAnswer} />
+                </div>
+              ) : isLive && !itemThinking ? (
+                <div className="chat-view__loading-flex">
+                  <span className="spinner" role="status" aria-hidden="true" />
+                  <p className="chat-view__loading-text">{t('chat.loading')}</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }

@@ -39,6 +39,9 @@
   --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 12px 30px rgba(16, 24, 40, 0.14);
 
+  /* Layout */
+  --topbar-height: calc(var(--space-2) * 2 + 36px + 1px);
+
   /* Space (4px base) */
   --space-1: 0.25rem;
   --space-2: 0.5rem;

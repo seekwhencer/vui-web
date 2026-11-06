@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { chatStream } from '../api/chat.js';
 
 // Manche Modelle emittieren das Thinking inline im Content als Think-Tags
@@ -7,140 +7,188 @@ import { chatStream } from '../api/chat.js';
 const OPEN_TAG = '<think' + '>';
 const CLOSE_TAG = '<think' + '/' + 'think' + '>';
 
+// Zustand + laufender Stream leben auf Modulebene, NICHT im Component-State.
+// So überleben sie das Unmounten der ChatPage (Seitenwechsel): Der
+// `for await`-Loop läuft weiter, und beim Zurückkehren liest die Seite den
+// aktuellen Zustand (inkl. laufender Ausgabe) aus dem Store.
+let state = {
+  question: '',
+  thinking: '',
+  answer: '',
+  pending: false,
+  error: null,
+  done: false,
+};
+
+const listeners = new Set();
+
+function emit() {
+  for (const listener of listeners) listener();
+}
+
+function setState(patch) {
+  state = { ...state, ...patch };
+  emit();
+}
+
+let abortController = null;
+
+function abort() {
+  if (abortController) {
+    abortController.abort();
+    abortController = null;
+  }
+}
+
 /**
- * Streaming-Chat-Hook.
- *
- * Iteriert über `chatStream(question, history)` und sammelt die
- * `thinking`- und `answer`-Tokens. Manche Modelle emittieren das Thinking
- * inline im Content als Think-Tags statt als separates `thinking`-Event —
- * die OPEN_TAG/CLOSE_TAG-Logik extrahiert diese und leitet sie korrekt zu
- * `thinking` bzw. `answer` weiter.
+ * Startet einen Streaming-Turn. Läuft asynchron weiter, auch wenn die
+ * ChatPage in der Zeit unmounted wird (Seitenwechsel). Liefert am Ende
+ * `{ thinking, answer, error }`.
  */
-export default function useChatStream() {
-  const [thinking, setThinking] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [question, setQuestion] = useState('');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState(null);
-  const [done, setDone] = useState(false);
+async function run(question, history) {
+  let serverThinking = '';
+  let extractedThinking = '';
+  let answerPrefix = '';
+  let answerSuffix = '';
+  let buffer = '';
+  let inThink = false;
+  let thinkClosed = false;
+  let err = null;
 
-  const abortRef = useRef(null);
+  const flush = () => {
+    setState({
+      thinking: serverThinking + extractedThinking,
+      answer: answerPrefix + answerSuffix,
+    });
+  };
 
-  const abort = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-  }, []);
+  setState({
+    question,
+    thinking: '',
+    answer: '',
+    error: null,
+    pending: true,
+    done: false,
+  });
 
-  const run = useCallback(async (question, history) => {
-    setQuestion(question);
-    let serverThinking = '';
-    let extractedThinking = '';
-    let answerPrefix = '';
-    let answerSuffix = '';
-    let buffer = '';
-    let inThink = false;
-    let thinkClosed = false;
-    let err = null;
+  const controller = new AbortController();
+  abortController = controller;
 
-    const flush = () => {
-      setThinking(serverThinking + extractedThinking);
-      setAnswer(answerPrefix + answerSuffix);
-    };
+  try {
+    for await (const { event, data } of chatStream(question, history, controller.signal)) {
+      if (event === 'thinking') {
+        serverThinking += data;
+        flush();
+      } else if (event === 'answer') {
+        buffer += data;
 
-    setThinking('');
-    setAnswer('');
-    setError(null);
-    setPending(true);
-    setDone(false);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      for await (const { event, data } of chatStream(question, history, controller.signal)) {
-        if (event === 'thinking') {
-          serverThinking += data;
-          flush();
-        } else if (event === 'answer') {
-          buffer += data;
-
-          if (!thinkClosed) {
-            if (!inThink) {
-              const openIdx = buffer.indexOf(OPEN_TAG);
-              if (openIdx !== -1) {
-                answerPrefix += buffer.slice(0, openIdx);
-                buffer = buffer.slice(openIdx + OPEN_TAG.length);
-                inThink = true;
-              } else {
-                const keep = OPEN_TAG.length - 1;
-                if (buffer.length > keep) {
-                  answerPrefix += buffer.slice(0, buffer.length - keep);
-                  buffer = buffer.slice(buffer.length - keep);
-                }
-              }
+        if (!thinkClosed) {
+          if (!inThink) {
+            const openIdx = buffer.indexOf(OPEN_TAG);
+            if (openIdx !== -1) {
+              answerPrefix += buffer.slice(0, openIdx);
+              buffer = buffer.slice(openIdx + OPEN_TAG.length);
+              inThink = true;
             } else {
-              const closeIdx = buffer.indexOf(CLOSE_TAG);
-              if (closeIdx !== -1) {
-                extractedThinking += buffer.slice(0, closeIdx);
-                buffer = buffer.slice(closeIdx + CLOSE_TAG.length);
-                inThink = false;
-                thinkClosed = true;
-                answerSuffix += buffer;
-                buffer = '';
-              } else {
-                const keep = CLOSE_TAG.length - 1;
-                if (buffer.length > keep) {
-                  extractedThinking += buffer.slice(0, buffer.length - keep);
-                  buffer = buffer.slice(buffer.length - keep);
-                }
+              const keep = OPEN_TAG.length - 1;
+              if (buffer.length > keep) {
+                answerPrefix += buffer.slice(0, buffer.length - keep);
+                buffer = buffer.slice(buffer.length - keep);
               }
             }
           } else {
-            answerSuffix += buffer;
-            buffer = '';
+            const closeIdx = buffer.indexOf(CLOSE_TAG);
+            if (closeIdx !== -1) {
+              extractedThinking += buffer.slice(0, closeIdx);
+              buffer = buffer.slice(closeIdx + CLOSE_TAG.length);
+              inThink = false;
+              thinkClosed = true;
+              answerSuffix += buffer;
+              buffer = '';
+            } else {
+              const keep = CLOSE_TAG.length - 1;
+              if (buffer.length > keep) {
+                extractedThinking += buffer.slice(0, buffer.length - keep);
+                buffer = buffer.slice(buffer.length - keep);
+              }
+            }
           }
-
-          flush();
-        } else if (event === 'done') {
-          setDone(true);
-          setPending(false);
-          flush();
-        } else if (event === 'error') {
-          const message =
-            (data && typeof data === 'object' && data.message) ||
-            (typeof data === 'string' && data) ||
-            'Streaming failed.';
-          throw new Error(message);
+        } else {
+          answerSuffix += buffer;
+          buffer = '';
         }
+
+        flush();
+      } else if (event === 'done') {
+        setState({ done: true, pending: false });
+        flush();
+      } else if (event === 'error') {
+        const message =
+          (data && typeof data === 'object' && data.message) ||
+          (typeof data === 'string' && data) ||
+          'Streaming failed.';
+        throw new Error(message);
       }
-    } catch (e) {
-      if (e && e.name === 'AbortError') {
-        // Intentionaler Abbruch → kein Fehler, nur pending/done aktualisieren
-        setPending(false);
-        setDone(true);
-      } else {
-        err = e;
-        setError(e);
-        setPending(false);
-        setDone(true);
-      }
-    } finally {
-      abortRef.current = null;
     }
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      // Intentionaler Abbruch → kein Fehler, nur pending/done aktualisieren
+      setState({ pending: false, done: true });
+    } else {
+      err = e;
+      setState({ error: e, pending: false, done: true });
+    }
+  } finally {
+    abortController = null;
+  }
 
-    return { thinking: serverThinking + extractedThinking, answer: answerPrefix + answerSuffix, error: err };
-  }, []);
+  // Die "keep last N chars"-Logik hält ein Tail im Buffer zurück, um ein
+  // über Events geteiltes Think-Tag zu erkennen. Am Ende des Streams kommt
+  // keine weitere Daten mehr — dieses Tail wird hier in den richtigen
+  // Bucket entlassen, sonst gingen die letzten Zeichen der Antwort verloren.
+  if (buffer) {
+    if (thinkClosed) {
+      answerSuffix += buffer;
+    } else if (inThink) {
+      extractedThinking += buffer;
+    } else {
+      answerPrefix += buffer;
+    }
+    buffer = '';
+    flush();
+  }
 
-  const setResult = useCallback(({ thinking: t, answer: a, error: e, question: q }) => {
-    setThinking(t || '');
-    setAnswer(a || '');
-    setError(e || null);
-    setQuestion(q || '');
-    setPending(false);
-    setDone(true);
-  }, []);
+  return { thinking: serverThinking + extractedThinking, answer: answerPrefix + answerSuffix, error: err };
+}
 
-  return { thinking, answer, question, pending, error, done, run, setResult, abort };
+function setResult({ thinking, answer, error, question }) {
+  setState({
+    thinking: thinking || '',
+    answer: answer || '',
+    error: error || null,
+    question: question || '',
+    pending: false,
+    done: true,
+  });
+}
+
+function subscribe(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+  return state;
+}
+
+/**
+ * Streaming-Chat-Hook.
+ *
+ * Liest den (modulebenen) Stream-Zustand und stellt `run`, `setResult` und
+ * `abort` bereit. Der Zustand überlebt Seitenwechsel, weil er nicht im
+ * Component-State, sondern im Store lebt.
+ */
+export default function useChatStream() {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  return { ...snapshot, run, setResult, abort };
 }

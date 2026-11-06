@@ -24,27 +24,27 @@ services:
               count: 1
               capabilities: [gpu]
 
-  vui-tts:
-    image: localai/localai:latest-gpu-nvidia-cuda-12
-    container_name: vui-tts
-    restart: unless-stopped
-    environment:
-      - MODELS_PATH=${TTS_MODELS_PATH}
-      - PORT=${TTS_PORT}
-      - GALLERIES=${TTS_GALLERIES}
-    ports:
-      - "${TTS_PORT}:${TTS_PORT}"
-    volumes:
-      - ./localai/models:${TTS_MODELS_PATH}
-    networks:
-      - vui
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+  #vui-tts:
+  #  image: localai/localai:latest-gpu-nvidia-cuda-12
+  #  container_name: vui-tts
+  #  restart: unless-stopped
+  #  environment:
+  #    - MODELS_PATH=${TTS_MODELS_PATH}
+  #    - PORT=${TTS_PORT}
+  #    - GALLERIES=${TTS_GALLERIES}
+  #  ports:
+  #    - "${TTS_PORT}:${TTS_PORT}"
+  #  volumes:
+  #    - ./localai/models:${TTS_MODELS_PATH}
+  #  networks:
+  #    - vui
+  #  deploy:
+  #    resources:
+  #      reservations:
+  #        devices:
+  #          - driver: nvidia
+  #            count: 1
+  #            capabilities: [gpu]
 
   vui-server:
     build:
@@ -55,6 +55,9 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "dev"]
     working_dir: /app/server
+    # LLM (llama.cpp) läuft auf dem Docker-Host → host.docker.internal mappen.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - vui
     ports:

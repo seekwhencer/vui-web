@@ -43,8 +43,11 @@
       "title": "History",
       "clear": "Clear history",
       "empty": "No conversations yet.",
-      "delete": "Delete"
-    }
+      "delete": "Delete",
+      "close": "Close"
+    },
+    "clear": "Clear conversation",
+    "new": "New chat"
   },
   "nav": {
     "transcription": "Transcription",

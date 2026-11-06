@@ -43,8 +43,11 @@
       "title": "Verlauf",
       "clear": "Verlauf löschen",
       "empty": "Noch keine Unterhaltungen.",
-      "delete": "Löschen"
-    }
+      "delete": "Löschen",
+      "close": "Schließen"
+    },
+    "clear": "Konversation löschen",
+    "new": "Neue Konversation"
   },
   "nav": {
     "transcription": "Transkription",

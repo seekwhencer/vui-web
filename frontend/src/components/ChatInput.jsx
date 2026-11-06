@@ -8,11 +8,12 @@ import { Send } from 'lucide-react';
  * Props:
  * - onSubmit(text)  → gesendeter Text (getrimmt)
  * - disabled        → Eingabe + Senden sperren
+ * - readOnly        → Textarea nur lesen (z. B. während Voice-Aufnahme)
  * - value/onChange  → optionaler Controlled-Mode (z. B. Voice-Transkript setzen)
  *
  * Enter = senden, Shift+Enter = Zeilenumbruch.
  */
-export default function ChatInput({ onSubmit, disabled, value, onChange }) {
+export default function ChatInput({ onSubmit, disabled, value, onChange, readOnly }) {
   const { t } = useTranslation();
   const [internal, setInternal] = useState('');
 
@@ -56,12 +57,13 @@ export default function ChatInput({ onSubmit, disabled, value, onChange }) {
         placeholder={t('chat.placeholder')}
         aria-label={t('chat.placeholder')}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
       <button type="submit" className="btn btn--primary" disabled={disabled || !text.trim()}>
         <Send size={16} />
-        <span>{t('chat.send')}</span>
+        <span>{t('transcription.sendToChat')}</span>
       </button>
     </form>
   );

@@ -87,6 +87,21 @@
   font-style: italic;
 }
 
+.transcript__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background-color: var(--color-primary);
+  vertical-align: text-bottom;
+  animation: caret-blink 0.9s step-end infinite;
+}
+
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 .transcription__actions {
   display: flex;
   justify-content: flex-end;

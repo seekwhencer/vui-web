@@ -16,7 +16,7 @@ export default function ChatPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { thinking, answer, pending, error, run, setResult } = useChatStream();
+  const { thinking, answer, pending, error, run, setResult, abort } = useChatStream();
   const {
     conversations,
     activeId,
@@ -191,6 +191,8 @@ export default function ChatPage() {
 
         <ChatInput
           onSubmit={handleSubmit}
+          onAbort={abort}
+          pending={pending}
           disabled={pending}
           value={displayValue}
           onChange={setInputValue}

@@ -31,6 +31,15 @@
   background-color: color-mix(in srgb, var(--color-error) 85%, black);
 }
 
+.btn--stop {
+  background-color: var(--color-error);
+  color: var(--color-surface);
+}
+
+.btn--stop:hover {
+  background-color: color-mix(in srgb, var(--color-error) 85%, black);
+}
+
 .btn--secondary {
   background-color: transparent;
   color: var(--color-text-secondary);

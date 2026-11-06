@@ -2,6 +2,7 @@
 node_modules/
 whisper
 localai
+parakeet
 
 # Build output
 dist/

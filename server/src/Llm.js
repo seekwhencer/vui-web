@@ -53,31 +53,50 @@ class Llm {
     async chat(messages, options = {}) {
         const cfg = this.chatConfig;
         const base = this.normalizeUrl(cfg.baseUrl);
+        const { signal, ...llmOptions } = options;
 
         try {
             if (cfg.api === 'openai') {
                 const res = await axios.post(`${base}/chat/completions`, {
-                    model: options.model || cfg.modelName,
+                    model: llmOptions.model || cfg.modelName,
                     messages: messages,
-                    ...options
-                });
+                    ...llmOptions
+                }, { signal });
 
                 this.logger.log(this.label, 'CHOICES', res.data.choices);
 
-                return res.data.choices[0].message.content;
+                return this._extractOpenAIAnswer(res.data);
             }
 
             const res = await axios.post(`${base}/api/chat`, {
-                model: options.model || cfg.modelName,
+                model: llmOptions.model || cfg.modelName,
                 messages: messages,
                 stream: false,
-                ...options
-            });
+                ...llmOptions
+            }, { signal });
             return res.data.message.content;
         } catch (error) {
             this.logger.error(this.label, 'Chat fehlgeschlagen', { error: error.message });
             throw error;
         }
+    }
+
+    /**
+     * Extrahiert die Antwort aus einer OpenAI-Chat-Completion-Antwort.
+     * Behandelt `content: null` gemäß Spec (Refusal / Tool-Calls):
+     * `content` (string) hat Vorrang, sonst `refusal`, sonst Fehler.
+     * @param {object} data - Die Response-Data (`{ choices: [...] }`)
+     * @returns {string} Der Antworttext
+     */
+    _extractOpenAIAnswer(data) {
+        const message = data?.choices?.[0]?.message || {};
+        if (typeof message.content === 'string') {
+            return message.content;
+        }
+        if (typeof message.refusal === 'string') {
+            return message.refusal;
+        }
+        throw new Error('LLM lieferte keine Antwort (content und refusal leer)');
     }
 
     /**

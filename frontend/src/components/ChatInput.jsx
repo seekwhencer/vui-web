@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send } from 'lucide-react';
+import { Send, Square } from 'lucide-react';
 
 /**
  * Chat-Eingabe: Textarea + Send-Button.
  *
  * Props:
  * - onSubmit(text)  → gesendeter Text (getrimmt)
+ * - onAbort()       → laufenden Stream abbrechen (wird bei `pending` als Stop-Button gezeigt)
+ * - pending         → Stream läuft → Send-Button wird zum Stop-Button
  * - disabled        → Eingabe + Senden sperren
  * - readOnly        → Textarea nur lesen (z. B. während Voice-Aufnahme)
  * - value/onChange  → optionaler Controlled-Mode (z. B. Voice-Transkript setzen)
  *
  * Enter = senden, Shift+Enter = Zeilenumbruch.
  */
-export default function ChatInput({ onSubmit, disabled, value, onChange, readOnly }) {
+export default function ChatInput({ onSubmit, onAbort, pending, disabled, value, onChange, readOnly }) {
   const { t } = useTranslation();
   const [internal, setInternal] = useState('');
 
@@ -61,10 +63,17 @@ export default function ChatInput({ onSubmit, disabled, value, onChange, readOnl
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <button type="submit" className="btn btn--primary" disabled={disabled || !text.trim()}>
-        <Send size={16} />
-        <span>{t('transcription.sendToChat')}</span>
-      </button>
+      {pending && onAbort ? (
+        <button type="button" className="btn btn--stop" onClick={onAbort}>
+          <Square size={16} fill="currentColor" />
+          <span>{t('chat.stop')}</span>
+        </button>
+      ) : (
+        <button type="submit" className="btn btn--primary" disabled={disabled || !text.trim()}>
+          <Send size={16} />
+          <span>{t('transcription.sendToChat')}</span>
+        </button>
+      )}
     </form>
   );
 }

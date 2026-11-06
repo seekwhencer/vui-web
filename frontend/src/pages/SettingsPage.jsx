@@ -18,6 +18,8 @@ const SECTIONS = [
     id: 'basic',
     title: 'settings.sections.basic',
     fields: [
+      { key: 'whisperHost', type: 'text', label: 'settings.fields.whisperHost', placeholder: 'vui-service', group: 'root' },
+      { key: 'whisperPort', type: 'number', label: 'settings.fields.whisperPort', min: 1, max: 65535, step: 1, group: 'root' },
       { key: 'language', type: 'text', label: 'settings.fields.language', placeholder: 'de' },
       { key: 'temperature', type: 'temperature', label: 'settings.fields.temperature' },
       { key: 'prompt', type: 'text', label: 'settings.fields.prompt' },
@@ -121,6 +123,8 @@ export default function SettingsPage() {
       whisper: { ...settings.whisper },
       llm: { ...(settings.llm || {}) },
       badwords: (settings.badwords || []).join('\n'),
+      whisperHost: settings.whisperHost,
+      whisperPort: settings.whisperPort,
     });
     setSaved(false);
   }, [settings]);
@@ -158,6 +162,8 @@ export default function SettingsPage() {
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean),
+      whisperHost: draft.whisperHost,
+      whisperPort: draft.whisperPort,
     };
     try {
       skipInitRef.current = true; // eigenes Save → Draft-Init überspringen
@@ -174,15 +180,20 @@ export default function SettingsPage() {
       whisper: { ...settings.whisper },
       llm: { ...(settings.llm || {}) },
       badwords: (settings.badwords || []).join('\n'),
+      whisperHost: settings.whisperHost,
+      whisperPort: settings.whisperPort,
     });
   };
 
   const renderField = (section, field) => {
-    const group = section.group || 'whisper';
-    const value = draft[group][field.key];
+    const group = field.group || section.group || 'whisper';
+    const isRoot = group === 'root';
+    const value = isRoot ? draft[field.key] : draft[group][field.key];
     const setGroupValue = (key, v) => {
       setSaved(false);
-      setDraft((d) => ({ ...d, [group]: { ...d[group], [key]: v } }));
+      setDraft((d) => (isRoot
+        ? { ...d, [key]: v }
+        : { ...d, [group]: { ...d[group], [key]: v } }));
     };
 
     if (field.type === 'checkbox') {

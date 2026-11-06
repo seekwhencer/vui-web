@@ -73,10 +73,10 @@ class Config {
     };
 
     /** Keys, die ohne Neustart wirksam werden (Bridge liest sie dynamisch). */
-    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords'];
+    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort'];
 
     /** Keys, die einen Neustart erfordern. */
-    static restartKeys = ['serverPort', 'whisperHost', 'whisperPort'];
+    static restartKeys = ['serverPort'];
 
     constructor(env = process.env, logger) {
         this.env = env;
@@ -271,6 +271,11 @@ class Config {
             errors.push('serverPort muss eine Ganzzahl zwischen 1 und 65535 sein');
         if (typeof s.verbose !== 'boolean')
             errors.push('verbose muss ein Boolean sein');
+
+        if (typeof s.whisperHost !== 'string' || s.whisperHost.trim() === '')
+            errors.push('whisperHost muss ein nicht-leerer String sein');
+        if (!Number.isInteger(s.whisperPort) || s.whisperPort < 1 || s.whisperPort > 65535)
+            errors.push('whisperPort muss eine Ganzzahl zwischen 1 und 65535 sein');
 
         const w = s.whisper || {};
         for (const [key, spec] of Object.entries(WHISPER_PARAMS)) {

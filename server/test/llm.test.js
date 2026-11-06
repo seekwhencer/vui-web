@@ -11,7 +11,7 @@ const silent = { log: () => { }, error: () => { } };
  * slow=true → sendet den ersten Chunk und hält die Antwort offen
  * (kein res.end()), damit ein Abort mid-stream getestet werden kann.
  */
-function createMockLlm({ slow = false } = {}) {
+function createMockLlm({ slow = false, refusal = false } = {}) {
     const sockets = new Set();
     const srv = http.createServer((req, res) => {
         sockets.add(res.socket);
@@ -33,7 +33,11 @@ function createMockLlm({ slow = false } = {}) {
                     res.end();
                 } else {
                     res.writeHead(200, { 'content-type': 'application/json' });
-                    res.end(JSON.stringify({ choices: [{ message: { content: 'OPENAI_ANSWER' } }] }));
+                    if (refusal) {
+                        res.end(JSON.stringify({ choices: [{ message: { content: null, refusal: 'REFUSED_ANSWER' } }] }));
+                    } else {
+                        res.end(JSON.stringify({ choices: [{ message: { content: 'OPENAI_ANSWER' } }] }));
+                    }
                 }
             } else if (req.url === '/api/chat') {
                 if (p.stream) {
@@ -65,7 +69,7 @@ function createMockLlm({ slow = false } = {}) {
     return srv;
 }
 
-let fastSrv, slowSrv, fastPort, slowPort;
+let fastSrv, slowSrv, refusalSrv, fastPort, slowPort, refusalPort;
 
 beforeAll(async () => {
     fastSrv = createMockLlm({ slow: false });
@@ -75,10 +79,14 @@ beforeAll(async () => {
     slowSrv = createMockLlm({ slow: true });
     await new Promise((r) => slowSrv.listen(0, '127.0.0.1', r));
     slowPort = slowSrv.address().port;
+
+    refusalSrv = createMockLlm({ refusal: true });
+    await new Promise((r) => refusalSrv.listen(0, '127.0.0.1', r));
+    refusalPort = refusalSrv.address().port;
 });
 
 afterAll(async () => {
-    for (const srv of [fastSrv, slowSrv]) {
+    for (const srv of [fastSrv, slowSrv, refusalSrv]) {
         srv.destroyAll();
         await new Promise((r) => srv.close(r));
     }
@@ -86,6 +94,7 @@ afterAll(async () => {
 
 const openaiConfig = () => ({ llm: { api: 'openai', host: '127.0.0.1', port: fastPort, model: 'm' } });
 const ollamaConfig = () => ({ llm: { api: 'ollama', host: '127.0.0.1', port: fastPort, model: 'm' } });
+const refusalConfig = () => ({ llm: { api: 'openai', host: '127.0.0.1', port: refusalPort, model: 'm' } });
 
 describe('Llm.chat()', () => {
     it('liefert den Antworttext (OpenAI-kompatibel)', async () => {
@@ -98,6 +107,12 @@ describe('Llm.chat()', () => {
         const llm = new Llm({ config: ollamaConfig(), logger: silent });
         const answer = await llm.chat([{ role: 'user', content: 'hi' }]);
         expect(answer).toBe('OLLAMA_ANSWER');
+    });
+
+    it('liefert die Refusal, wenn content null ist', async () => {
+        const llm = new Llm({ config: refusalConfig(), logger: silent });
+        const answer = await llm.chat([{ role: 'user', content: 'hi' }]);
+        expect(answer).toBe('REFUSED_ANSWER');
     });
 });
 

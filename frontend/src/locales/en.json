@@ -48,7 +48,19 @@
       "close": "Close"
     },
     "clear": "Clear conversation",
-    "new": "New chat"
+    "new": "New chat",
+    "tokens": "Token",
+    "tokensPrompt": "Prompt",
+    "tokensCompletion": "Completion",
+    "reasoningEffort": "Reasoning effort",
+    "effort": {
+      "none": "None",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "X-High",
+      "max": "Max"
+    }
   },
   "nav": {
     "transcription": "Transcription",

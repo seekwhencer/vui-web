@@ -48,7 +48,19 @@
       "close": "Schließen"
     },
     "clear": "Konversation löschen",
-    "new": "Neue Konversation"
+    "new": "Neue Konversation",
+    "tokens": "Token",
+    "tokensPrompt": "Prompt",
+    "tokensCompletion": "Completion",
+    "reasoningEffort": "Denkaufwand",
+    "effort": {
+      "none": "Kein",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "max": "Max"
+    }
   },
   "nav": {
     "transcription": "Transkription",

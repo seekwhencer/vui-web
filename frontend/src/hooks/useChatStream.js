@@ -45,7 +45,7 @@ function abort() {
  * ChatPage in der Zeit unmounted wird (Seitenwechsel). Liefert am Ende
  * `{ thinking, answer, error }`.
  */
-async function run(question, history) {
+async function run(question, history, reasoningEffort) {
   let serverThinking = '';
   let extractedThinking = '';
   let answerPrefix = '';
@@ -75,7 +75,7 @@ async function run(question, history) {
   abortController = controller;
 
   try {
-    for await (const { event, data } of chatStream(question, history, controller.signal)) {
+    for await (const { event, data } of chatStream(question, history, controller.signal, reasoningEffort)) {
       if (event === 'thinking') {
         serverThinking += data;
         flush();
@@ -120,7 +120,7 @@ async function run(question, history) {
 
         flush();
       } else if (event === 'done') {
-        setState({ done: true, pending: false });
+        setState({ done: true, pending: false, tokens: data?.tokens || null, model: data?.model || null });
         flush();
       } else if (event === 'error') {
         const message =
@@ -158,15 +158,23 @@ async function run(question, history) {
     flush();
   }
 
-  return { thinking: serverThinking + extractedThinking, answer: answerPrefix + answerSuffix, error: err };
+  return {
+    thinking: serverThinking + extractedThinking,
+    answer: answerPrefix + answerSuffix,
+    error: err,
+    tokens: state.tokens || null,
+    model: state.model || null,
+  };
 }
 
-function setResult({ thinking, answer, error, question }) {
+function setResult({ thinking, answer, error, question, tokens, model }) {
   setState({
     thinking: thinking || '',
     answer: answer || '',
     error: error || null,
     question: question || '',
+    tokens: tokens || null,
+    model: model || null,
     pending: false,
     done: true,
   });

@@ -10,6 +10,14 @@ function errorMessage(t, error) {
   return t('chat.error.server');
 }
 
+// Manche Server (z. B. LM Studio) melden den vollen Modell-Pfad. Für die
+// Anzeige nur das letzte Segment zeigen (der echte Modell-Name).
+function modelLabel(model) {
+  if (!model) return '—';
+  const parts = String(model).split(/[\\/]+/);
+  return parts[parts.length - 1] || String(model);
+}
+
 /**
  * Zeigt den kompletten Chatverlauf: alle Turns (User + Assistant) in
  * zeitlicher Reihenfolge. Der laufende Turn (pending) zeigt den Live-Stream
@@ -82,9 +90,22 @@ export default function ChatView({ items, thinking, answer, error, conversationI
               {itemError ? (
                 <p className="chat-view__error-text">{itemError}</p>
               ) : itemAnswer ? (
-                <div className="msg__bubble">
-                  <MarkdownRenderer text={itemAnswer} />
-                </div>
+                <>
+                  <div className="msg__bubble">
+                    <MarkdownRenderer text={itemAnswer} />
+                  </div>
+                  {item.tokens != null && (
+                    <div
+                      className="turn__meta"
+                      title={`${t('chat.tokensPrompt')}: ${item.tokens.prompt} · ${t('chat.tokensCompletion')}: ${item.tokens.completion}`}
+                    >
+                      <span className="turn__model" title={item.model}>{modelLabel(item.model)}</span>
+                      <span className="turn__tokens">
+                        {item.tokens.total} {t('chat.tokens')}
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : isLive && !itemThinking ? (
                 <div className="chat-view__loading-flex">
                   <span className="spinner" role="status" aria-hidden="true" />

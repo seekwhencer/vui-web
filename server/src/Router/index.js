@@ -107,13 +107,22 @@ class Router {
             res.on('close', () => controller.abort());
 
             const messages = this.buildChatMessages(question, req.body?.history);
+            const llmOptions = { signal: controller.signal };
+            if (req.body?.reasoning_effort) {
+                llmOptions.reasoning_effort = req.body.reasoning_effort;
+            }
+            let stats = null;
             try {
-                for await (const { phase, token } of this.llm.streamChat(messages, { signal: controller.signal })) {
+                for await (const chunk of this.llm.streamChat(messages, llmOptions)) {
                     if (res.writableEnded) break;
-                    if (send(phase, token) === false) break;
+                    if (chunk.phase === 'stats') {
+                        stats = chunk;
+                        continue;
+                    }
+                    if (send(chunk.phase, chunk.token) === false) break;
                 }
                 if (!res.writableEnded) {
-                    send('done', {});
+                    send('done', stats || {});
                     res.end();
                 }
             } catch (err) {

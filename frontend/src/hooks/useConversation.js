@@ -112,6 +112,8 @@ function addTurn({ question, pending }) {
     answer: null,
     thinking: null,
     error: null,
+    tokens: null,
+    model: null,
     ts: Date.now(),
     pending: pending ?? false,
   };

@@ -315,6 +315,35 @@
   font-size: var(--fs-sm);
 }
 
+/* Meta-Zeile unter der Antwort: verwendetes Modell + Token-Zahl */
+.turn__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: 0 var(--space-1);
+  font-size: var(--fs-2xs);
+  color: var(--color-muted);
+}
+
+.turn__model {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.turn__tokens {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+
 .chat-view__loading-flex {
   display: flex;
   align-items: center;
@@ -391,6 +420,37 @@
   align-items: flex-end;
   gap: var(--space-3);
   margin-top: var(--space-5);
+}
+
+.chat-input__effort {
+  flex: none;
+  height: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition), color var(--transition);
+}
+
+.chat-input__effort:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.chat-input__effort:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+}
+
+.chat-input__effort:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Voice-Steuerung (Mic + Status + Interim) */

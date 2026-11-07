@@ -66,13 +66,17 @@ export async function chat(question, history, signal) {
  * @param {AbortSignal} [signal] - Optionales AbortSignal
  * @yields {{ event: string, data: * }}
  */
-export async function* chatStream(question, history, signal) {
+export async function* chatStream(question, history, signal, reasoningEffort) {
+  const body = { question, history };
+  if (reasoningEffort && reasoningEffort !== 'none') {
+    body.reasoning_effort = reasoningEffort;
+  }
   let res;
   try {
     res = await fetch(CHAT_STREAM_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify(body),
       signal,
     });
   } catch (err) {

@@ -11,8 +11,11 @@ const silent = { log: () => { }, error: () => { } };
  * slow=true → sendet den ersten Chunk und hält die Antwort offen
  * (kein res.end()), damit ein Abort mid-stream getestet werden kann.
  */
-function createMockLlm({ slow = false, refusal = false } = {}) {
+function createMockLlm({ slow = false, refusal = false, model = null } = {}) {
     const sockets = new Set();
+    // `withModel` injiziert den tatsächlichen Modell-Namen in jeden Chunk,
+    // wie es echte OpenAI-/Ollama-Server tun (`chunk.model`).
+    const withModel = (obj) => (model ? { model, ...obj } : obj);
     const srv = http.createServer((req, res) => {
         sockets.add(res.socket);
         res.on('close', () => sockets.delete(res.socket));
@@ -25,10 +28,10 @@ function createMockLlm({ slow = false, refusal = false } = {}) {
             if (req.url === '/v1/chat/completions') {
                 if (p.stream) {
                     res.writeHead(200, { 'content-type': 'text/event-stream' });
-                    res.write('data: {"choices":[{"delta":{"reasoning_content":"THINK"}}]}\n\n');
+                    res.write('data: ' + JSON.stringify(withModel({ choices: [{ delta: { reasoning_content: 'THINK' } }] })) + '\n\n');
                     if (slow) return; // offen halten
-                    res.write('data: {"choices":[{"delta":{"content":"He"}}]}\n\n');
-                    res.write('data: {"choices":[{"delta":{"content":"llo"}}]}\n\n');
+                    res.write('data: ' + JSON.stringify(withModel({ choices: [{ delta: { content: 'He' } }] })) + '\n\n');
+                    res.write('data: ' + JSON.stringify(withModel({ choices: [{ delta: { content: 'llo' } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } })) + '\n\n');
                     res.write('data: [DONE]\n\n');
                     res.end();
                 } else {
@@ -42,11 +45,11 @@ function createMockLlm({ slow = false, refusal = false } = {}) {
             } else if (req.url === '/api/chat') {
                 if (p.stream) {
                     res.writeHead(200, { 'content-type': 'application/x-ndjson' });
-                    res.write(JSON.stringify({ thinking: 'OL_THINK' }) + '\n');
+                    res.write(JSON.stringify(withModel({ thinking: 'OL_THINK' })) + '\n');
                     if (slow) return; // offen halten
-                    res.write(JSON.stringify({ message: { content: 'ol' } }) + '\n');
-                    res.write(JSON.stringify({ message: { content: 'la' } }) + '\n');
-                    res.write(JSON.stringify({ message: { content: '' }, done: true }) + '\n');
+                    res.write(JSON.stringify(withModel({ message: { content: 'ol' } })) + '\n');
+                    res.write(JSON.stringify(withModel({ message: { content: 'la' } })) + '\n');
+                    res.write(JSON.stringify(withModel({ message: { content: '' }, done: true, prompt_eval_count: 5, eval_count: 7 })) + '\n');
                     res.end();
                 } else {
                     res.writeHead(200, { 'content-type': 'application/json' });
@@ -69,7 +72,7 @@ function createMockLlm({ slow = false, refusal = false } = {}) {
     return srv;
 }
 
-let fastSrv, slowSrv, refusalSrv, fastPort, slowPort, refusalPort;
+let fastSrv, slowSrv, refusalSrv, modelSrv, fastPort, slowPort, refusalPort, modelPort;
 
 beforeAll(async () => {
     fastSrv = createMockLlm({ slow: false });
@@ -83,10 +86,15 @@ beforeAll(async () => {
     refusalSrv = createMockLlm({ refusal: true });
     await new Promise((r) => refusalSrv.listen(0, '127.0.0.1', r));
     refusalPort = refusalSrv.address().port;
+
+    // Server, der den tatsächlichen Modell-Namen in den Chunks mitliefert.
+    modelSrv = createMockLlm({ model: 'actual-model' });
+    await new Promise((r) => modelSrv.listen(0, '127.0.0.1', r));
+    modelPort = modelSrv.address().port;
 });
 
 afterAll(async () => {
-    for (const srv of [fastSrv, slowSrv, refusalSrv]) {
+    for (const srv of [fastSrv, slowSrv, refusalSrv, modelSrv]) {
         srv.destroyAll();
         await new Promise((r) => srv.close(r));
     }
@@ -125,6 +133,7 @@ describe('Llm.streamChat()', () => {
             { phase: 'thinking', token: 'THINK' },
             { phase: 'answer', token: 'He' },
             { phase: 'answer', token: 'llo' },
+            { phase: 'stats', tokens: { prompt: 5, completion: 3, total: 8 }, model: 'm' },
         ]);
     });
 
@@ -136,7 +145,18 @@ describe('Llm.streamChat()', () => {
             { phase: 'thinking', token: 'OL_THINK' },
             { phase: 'answer', token: 'ol' },
             { phase: 'answer', token: 'la' },
+            { phase: 'stats', tokens: { prompt: 5, completion: 7, total: 12 }, model: 'm' },
         ]);
+    });
+
+    it('nimmt den Modell-Namen aus den Response-Chunks (nicht nur Config)', async () => {
+        const config = { llm: { api: 'openai', host: '127.0.0.1', port: modelPort, model: '' } };
+        const llm = new Llm({ config, logger: silent });
+        const events = [];
+        for await (const e of llm.streamChat([{ role: 'user', content: 'hi' }])) events.push(e);
+        const stats = events[events.length - 1];
+        expect(stats.phase).toBe('stats');
+        expect(stats.model).toBe('actual-model');
     });
 });
 

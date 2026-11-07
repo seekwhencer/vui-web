@@ -54,7 +54,7 @@ export default function ChatPage() {
         : inputValue)
     : inputValue;
 
-  const handleSubmit = async (text) => {
+  const handleSubmit = async (text, reasoningEffort) => {
     // Alle Nachrichten der aktiven Konversation mitschicken
     // (User + Assistant-Ausgaben), aber NICHT die Denk-Ausgabe.
     const history = items
@@ -67,13 +67,15 @@ export default function ChatPage() {
     const id = addTurn({ question: text, pending: true });
     setInputValue('');
 
-    const result = await run(text, history);
+    const result = await run(text, history, reasoningEffort);
 
     updateTurn(id, {
       pending: false,
       answer: result.answer,
       thinking: result.thinking,
       error: result.error ? result.error.message || String(result.error) : null,
+      tokens: result.tokens,
+      model: result.model,
     });
   };
 

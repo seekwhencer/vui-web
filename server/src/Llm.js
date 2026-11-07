@@ -196,6 +196,8 @@ class Llm {
             model: llmOptions.model || cfg.modelName,
             messages,
             stream: true,
+            // OpenAI liefert `usage` im Stream nur, wenn explizit angefordert.
+            ...(cfg.api === 'openai' ? { stream_options: { include_usage: true } } : {}),
             ...llmOptions
         };
 
@@ -225,24 +227,59 @@ class Llm {
 
     /**
      * Streamt Chat-Completions und liefert strukturierte { phase, token }-Objekte.
+     * Am Ende des Streams wird ein zusätzliches { phase: 'stats' }-Objekt
+     * mit den verbrauchten Token und dem Model-Namen geliefert.
      * @param {Array<object>} messages - Array von Chat-Nachrichten
      * @param {object} [options={}] - Zusätzliche Optionen
-     * @yields {object} Objekte mit phase ('thinking' | 'answer') und token
+     * @yields {object} Objekte mit phase ('thinking' | 'answer' | 'stats') und token
      */
     async *streamChat(messages, options = {}) {
+        const cfg = this.chatConfig;
+        // Modell-Name: Config-Wert als Fallback, der tatsächliche Name kommt
+        // aus den Response-Chunks (`chunk.model`) — das ist das Modell, das
+        // die Anfrage wirklich bedient hat (z. B. wenn Config leer ist).
+        let responseModel = cfg.modelName;
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let totalTokens = 0;
+
         for await (const chunk of this.streamChunks(messages, options)) {
-            if (this.chatConfig.api === 'openai') {
+            if (chunk.model) responseModel = chunk.model;
+
+            if (cfg.api === 'openai') {
                 const delta = chunk.choices?.[0]?.delta || {};
                 const reasoning = delta.reasoning_content ?? delta.thinking ?? '';
                 if (reasoning) yield { phase: 'thinking', token: reasoning };
                 if (delta.content) yield { phase: 'answer', token: delta.content };
+
+                // OpenAI liefert `usage` top-level im letzten Chunk (leere choices).
+                const usage = chunk.usage ?? chunk.choices?.[0]?.usage;
+                if (usage) {
+                    promptTokens = usage.prompt_tokens ?? 0;
+                    completionTokens = usage.completion_tokens ?? 0;
+                    totalTokens = usage.total_tokens ?? 0;
+                }
             } else {
                 const msg = chunk.message || {};
                 const reasoning = chunk.thinking ?? msg.thinking ?? '';
                 if (reasoning) yield { phase: 'thinking', token: reasoning };
                 if (msg.content) yield { phase: 'answer', token: msg.content };
+
+                // Ollama liefert im finalen Chunk `prompt_eval_count` (Prompt)
+                // und `eval_count` (Completion). Total = Summe beider.
+                if (chunk.done) {
+                    promptTokens = chunk.prompt_eval_count ?? 0;
+                    completionTokens = chunk.eval_count ?? 0;
+                    totalTokens = promptTokens + completionTokens;
+                }
             }
         }
+
+        yield {
+            phase: 'stats',
+            tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens },
+            model: responseModel,
+        };
     }
 }
 

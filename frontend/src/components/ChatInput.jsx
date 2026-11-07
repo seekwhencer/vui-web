@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Square } from 'lucide-react';
 
+const EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+
 /**
- * Chat-Eingabe: Textarea + Send-Button.
+ * Chat-Eingabe: Textarea + Reasoning-Effort-Select + Send-Button.
  *
  * Props:
- * - onSubmit(text)  → gesendeter Text (getrimmt)
+ * - onSubmit(text, reasoningEffort)  → gesendeter Text (getrimmt) + gewählter Effort
  * - onAbort()       → laufenden Stream abbrechen (wird bei `pending` als Stop-Button gezeigt)
  * - pending         → Stream läuft → Send-Button wird zum Stop-Button
  * - disabled        → Eingabe + Senden sperren
@@ -18,6 +20,7 @@ import { Send, Square } from 'lucide-react';
 export default function ChatInput({ onSubmit, onAbort, pending, disabled, value, onChange, readOnly }) {
   const { t } = useTranslation();
   const [internal, setInternal] = useState('');
+  const [effort, setEffort] = useState('none');
 
   const controlled = value !== undefined;
   const text = controlled ? value : internal;
@@ -33,7 +36,7 @@ export default function ChatInput({ onSubmit, onAbort, pending, disabled, value,
   function submit() {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
-    onSubmit(trimmed);
+    onSubmit(trimmed, effort);
     setText('');
   }
 
@@ -63,6 +66,17 @@ export default function ChatInput({ onSubmit, onAbort, pending, disabled, value,
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
+      <select
+        className="chat-input__effort"
+        value={effort}
+        onChange={(e) => setEffort(e.target.value)}
+        aria-label={t('chat.reasoningEffort')}
+        disabled={disabled}
+      >
+        {EFFORTS.map((e) => (
+          <option key={e} value={e}>{t(`chat.effort.${e}`)}</option>
+        ))}
+      </select>
       {pending && onAbort ? (
         <button type="button" className="btn btn--stop" onClick={onAbort}>
           <Square size={16} fill="currentColor" />

@@ -18,6 +18,9 @@ class Llm {
         this.config = config;
         this.label = '[Llm]';
         this.logger = logger || { log: () => { }, error: () => { } };
+        // Tool-Support-Cache: null = unbekannt, true/false = erkannt.
+        this._toolSupport = null;
+        this._toolSupportSignature = undefined;
     }
 
     /**
@@ -32,7 +35,17 @@ class Llm {
         const base = (api === 'openai')
             ? `http://${host}:${port}/v1`
             : `http://${host}:${port}`;
-        return { api, baseUrl: this.normalizeUrl(base), modelName: llm.model || '' };
+        const cfg = { api, baseUrl: this.normalizeUrl(base), modelName: llm.model || '' };
+
+        // Cache-Invalidierung: Bei Änderung von api/baseUrl/modelName ist das
+        // erkannte Tool-Support-Ergebnis nicht mehr gültig → zurücksetzen.
+        const signature = `${api}|${cfg.baseUrl}|${cfg.modelName}`;
+        if (this._toolSupportSignature !== undefined && this._toolSupportSignature !== signature) {
+            this._toolSupport = null;
+        }
+        this._toolSupportSignature = signature;
+
+        return cfg;
     }
 
     /**
@@ -79,6 +92,70 @@ class Llm {
             this.logger.error(this.label, 'Chat fehlgeschlagen', { error: error.message });
             throw error;
         }
+    }
+
+    /**
+     * Non-streaming Chat mit Function-Calling (Tools).
+     * Liefert den vollständigen Turn inkl. angeforderter Tool-Calls.
+     * @param {Array<object>} messages - Array von Chat-Nachrichten
+     * @param {Array<object>} [tools] - OpenAI-Function-Tools (leer/undefined = ohne Tools)
+     * @param {object} [options={}] - Zusätzliche Optionen (z. B. model, temperature)
+     * @returns {Promise<{content: string|null, toolCalls: Array<object>, refusal: string|null}>}
+     */
+    async chatWithTools(messages, tools, options = {}) {
+        const cfg = this.chatConfig;
+        const base = this.normalizeUrl(cfg.baseUrl);
+        const { signal, ...llmOptions } = options;
+
+        const payload = {
+            model: llmOptions.model || cfg.modelName,
+            messages,
+            ...(tools && tools.length > 0 ? { tools } : {}),
+            ...llmOptions
+        };
+
+        try {
+            if (cfg.api === 'openai') {
+                const res = await axios.post(`${base}/chat/completions`, payload, { signal });
+                return this._extractOpenAITurn(res.data);
+            }
+
+            // Ollama: Tools werden über `tools` im Payload übergeben (OpenAI-kompatibel).
+            const res = await axios.post(`${base}/api/chat`, { ...payload, stream: false }, { signal });
+            return this._extractOllamaTurn(res.data);
+        } catch (error) {
+            this.logger.error(this.label, 'ChatWithTools fehlgeschlagen', { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Extrahiert einen LLM-Turn (content + tool_calls + refusal) aus einer OpenAI-Antwort.
+     * @param {object} data - Die Response-Data (`{ choices: [...] }`)
+     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null}}
+     */
+    _extractOpenAITurn(data) {
+        const message = data?.choices?.[0]?.message || {};
+        return {
+            content: typeof message.content === 'string' ? message.content : null,
+            toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+            refusal: typeof message.refusal === 'string' ? message.refusal : null,
+        };
+    }
+
+    /**
+     * Extrahiert einen LLM-Turn (content + tool_calls + refusal) aus einer Ollama-Antwort.
+     * Ollama nutzt das OpenAI-Format (`message.tool_calls`).
+     * @param {object} data - Die Response-Data (`{ message: {...} }`)
+     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null}}
+     */
+    _extractOllamaTurn(data) {
+        const message = data?.message || {};
+        return {
+            content: typeof message.content === 'string' ? message.content : null,
+            toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+            refusal: typeof message.refusal === 'string' ? message.refusal : null,
+        };
     }
 
     /**
@@ -280,6 +357,150 @@ class Llm {
             tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens },
             model: responseModel,
         };
+    }
+
+    /**
+     * Merged einen inkrementellen Tool-Call (OpenAI liefert `delta.tool_calls`
+     * Chunk für Chunk) in den Akkumulator-Array (indexiert nach `index`).
+     * @param {Array<object>} acc - Akkumulator (indexiert nach Tool-Call-Index)
+     * @param {object} tc - Teil-Tool-Call aus einem Chunk
+     * @private
+     */
+    _mergeToolCall(acc, tc) {
+        const idx = (typeof tc.index === 'number') ? tc.index : 0;
+        if (!acc[idx]) {
+            acc[idx] = { id: tc.id || null, type: tc.type || 'function', function: { name: '', arguments: '' } };
+        }
+        if (tc.id) acc[idx].id = tc.id;
+        if (tc.type) acc[idx].type = tc.type;
+        const fn = tc.function || {};
+        if (fn.name) acc[idx].function.name += fn.name;
+        if (fn.arguments) acc[idx].function.arguments += fn.arguments;
+    }
+
+    /**
+     * Streamt Chat-Completions mit Function-Calling (Tools).
+     * Wie `streamChat()`, aber: `tools` im Payload, und am Ende des Streams
+     * wird der finale Turn (content + tool_calls) rekonstruiert und als
+     * `{ phase: 'turn', content, toolCalls }` geliefert.
+     * @param {Array<object>} messages - Array von Chat-Nachrichten
+     * @param {Array<object>} [tools] - OpenAI-Function-Tools (leer/undefined = ohne Tools)
+     * @param {object} [options={}] - Zusätzliche Optionen
+     * @yields {object} Objekte mit phase ('thinking' | 'answer' | 'stats' | 'turn')
+     */
+    async *streamChatWithTools(messages, tools, options = {}) {
+        const cfg = this.chatConfig;
+        let responseModel = cfg.modelName;
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let totalTokens = 0;
+        let content = '';
+        let reasoningContent = '';  // Reasoning-Modelle: muss beim Replay mitgegeben werden
+        const openaiToolCalls = []; // inkrementelle Akkumulation (nach Index)
+        let ollamaToolCalls = [];   // letztes vollständiges Array gewinnt
+
+        const toolsPayload = (tools && tools.length > 0) ? { tools } : {};
+
+        for await (const chunk of this.streamChunks(messages, { ...options, ...toolsPayload })) {
+            if (chunk.model) responseModel = chunk.model;
+
+            if (cfg.api === 'openai') {
+                const delta = chunk.choices?.[0]?.delta || {};
+                const reasoning = delta.reasoning_content ?? delta.thinking ?? '';
+                if (reasoning) {
+                    reasoningContent += reasoning;
+                    yield { phase: 'thinking', token: reasoning };
+                }
+                if (delta.content) {
+                    content += delta.content;
+                    yield { phase: 'answer', token: delta.content };
+                }
+                if (Array.isArray(delta.tool_calls)) {
+                    for (const tc of delta.tool_calls) this._mergeToolCall(openaiToolCalls, tc);
+                }
+
+                // OpenAI liefert `usage` top-level im letzten Chunk (leere choices).
+                const usage = chunk.usage ?? chunk.choices?.[0]?.usage;
+                if (usage) {
+                    promptTokens = usage.prompt_tokens ?? 0;
+                    completionTokens = usage.completion_tokens ?? 0;
+                    totalTokens = usage.total_tokens ?? 0;
+                }
+            } else {
+                const msg = chunk.message || {};
+                const reasoning = chunk.thinking ?? msg.thinking ?? '';
+                if (reasoning) {
+                    reasoningContent += reasoning;
+                    yield { phase: 'thinking', token: reasoning };
+                }
+                if (msg.content) {
+                    content += msg.content;
+                    yield { phase: 'answer', token: msg.content };
+                }
+                if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                    ollamaToolCalls = msg.tool_calls;
+                }
+
+                // Ollama liefert im finalen Chunk `prompt_eval_count` (Prompt)
+                // und `eval_count` (Completion). Total = Summe beider.
+                if (chunk.done) {
+                    promptTokens = chunk.prompt_eval_count ?? 0;
+                    completionTokens = chunk.eval_count ?? 0;
+                    totalTokens = promptTokens + completionTokens;
+                }
+            }
+        }
+
+        const toolCalls = (cfg.api === 'openai') ? openaiToolCalls.filter(Boolean) : ollamaToolCalls;
+
+        yield {
+            phase: 'stats',
+            tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens },
+            model: responseModel,
+        };
+        yield { phase: 'turn', content, toolCalls, reasoning: reasoningContent };
+    }
+
+    /**
+     * Prüft einmalig, ob das LLM-Backend OpenAI-Function-Calling unterstützt.
+     * Das Ergebnis wird gecacht und bei Modell-/Backend-Wechsel invalidiert
+     * (siehe `chatConfig`-Getter).
+     * @returns {Promise<boolean>} true = Tool-Support erkannt, false = nicht
+     */
+    async detectToolSupport() {
+        // Zuerst `chatConfig` aufrufen: Der Getter prüft die Signatur
+        // (api|baseUrl|model) und invalidiert den Cache bei Modell-/Backend-Wechsel.
+        // Ohne diesen Aufruf würde der Cache-Short-Circuit unten ein veraltetes
+        // Ergebnis liefern, weil die Invalidierung nie erreicht wird.
+        this.chatConfig;
+        if (this._toolSupport !== null) return this._toolSupport;
+
+        const probeTools = [{
+            type: 'function',
+            function: {
+                name: 'get_time',
+                description: 'Get the current time. You MUST use this tool.',
+                parameters: { type: 'object', properties: {} },
+            },
+        }];
+
+        try {
+            // max_tokens bewusst großzügig: Reasoning-Modelle (z. B. Qwen3)
+            // verbrauchen zuerst Tokens für `reasoning_content` und emittieren
+            // den Tool-Call erst danach. Zu niedrig (z. B. 30) → finish_reason
+            // "length" ohne tool_calls → falsches "kein Tool-Support".
+            const res = await this.chatWithTools(
+                [{ role: 'user', content: 'What time is it now? Use the get_time tool.' }],
+                probeTools,
+                { max_tokens: 200 },
+            );
+            this._toolSupport = Array.isArray(res.toolCalls) && res.toolCalls.length > 0;
+        } catch {
+            this._toolSupport = false;
+        }
+
+        this.logger.log(this.label, `Tool-Support: ${this._toolSupport ? 'ja' : 'nein'}`);
+        return this._toolSupport;
     }
 }
 

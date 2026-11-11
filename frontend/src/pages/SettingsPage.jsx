@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Save, RotateCcw } from 'lucide-react';
 import useSettings from '../hooks/useSettings.js';
 import Slider from '../components/ui/Slider.jsx';
+import McpSettings from '../components/McpSettings.jsx';
 import { useAppSettings, setAppSettings, resetAppSettings } from '../services/appSettings.js';
 import { primaryColorForHue } from '../utils/primaryColor.js';
 import { radiusForFactor } from '../utils/radius.js';
@@ -85,6 +86,7 @@ const SECTIONS = [
 const TABS = [
   ...SECTIONS.map((s) => ({ id: s.id, title: s.title })),
   { id: 'badwords', title: 'settings.sections.badwords' },
+  { id: 'mcp', title: 'settings.sections.mcp' },
   { id: 'ui', title: 'settings.sections.ui' },
 ];
 
@@ -296,7 +298,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="settings__body" role="tabpanel">
-          {activeTab === 'ui' ? (
+          {activeTab === 'mcp' ? (
+            <McpSettings />
+          ) : activeTab === 'ui' ? (
             <div className="settings__grid">
               <Slider
                 id="ui-radius"
@@ -368,7 +372,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="settings__footer">
-          {activeTab === 'ui' ? (
+          {activeTab === 'mcp' ? (
+            <span className="settings__saved">{t('mcp.hint')}</span>
+          ) : activeTab === 'ui' ? (
             <>
               <span className="settings__saved">{t('settings.uiHint')}</span>
               <div className="settings__actions">

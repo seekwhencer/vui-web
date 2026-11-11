@@ -73,7 +73,7 @@ class Config {
     };
 
     /** Keys, die ohne Neustart wirksam werden (Bridge liest sie dynamisch). */
-    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort'];
+    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort', 'mcpServers'];
 
     /** Keys, die einen Neustart erfordern. */
     static restartKeys = ['serverPort'];
@@ -102,6 +102,9 @@ class Config {
 
         // Badword-Liste (serverseitig aus dem Transkript gefiltert)
         this.badwords = this.resolveBadwords(loaded);
+
+        // MCP-Server (beliebig viele, HTTP/SSE). Default: keine.
+        this.mcpServers = this.resolveMcpServers(loaded);
     }
 
     /**
@@ -225,6 +228,15 @@ class Config {
     }
 
     /**
+     * Ermittelt die MCP-Server-Liste: config.json > []. @returns {Array<object>}
+     */
+    resolveMcpServers(loaded) {
+        const fromFile = loaded?.mcpServers;
+        if (Array.isArray(fromFile)) return fromFile;
+        return [];
+    }
+
+    /**
      * Schreibt die Default-Konfiguration explizit (Setup-Schritt, z. B. --init-config).
      */
     saveDefaults() {
@@ -239,7 +251,8 @@ class Config {
             llm: Object.fromEntries(
                 Object.entries(LLM_PARAMS).map(([key, spec]) => [key, spec.default])
             ),
-            badwords: []
+            badwords: [],
+            mcpServers: []
         };
         writeFileSync(this.configPath, JSON.stringify(defaults, null, 4), 'utf8');
     }
@@ -256,7 +269,8 @@ class Config {
             whisperPort: this.whisperPort,
             whisper: { ...this.whisper },
             llm: { ...this.llm },
-            badwords: [...this.badwords]
+            badwords: [...this.badwords],
+            mcpServers: [...this.mcpServers]
         };
     }
 
@@ -293,6 +307,8 @@ class Config {
 
         if (!Array.isArray(s.badwords) || s.badwords.some((b) => typeof b !== 'string'))
             errors.push('badwords muss ein Array aus Strings sein');
+
+        errors.push(...this.validateMcpServers(s.mcpServers || []));
 
         return errors;
     }
@@ -365,6 +381,54 @@ class Config {
     }
 
     /**
+     * Validiert eine MCP-Server-Liste. @returns {string[]} Fehlerliste
+     */
+    validateMcpServers(list) {
+        const errors = [];
+        if (!Array.isArray(list)) {
+            errors.push('mcpServers muss ein Array sein');
+            return errors;
+        }
+        const seen = new Set();
+        for (const [i, s] of list.entries()) {
+            const label = `mcpServers[${i}]`;
+            if (typeof s !== 'object' || s === null) { errors.push(`${label} muss ein Objekt sein`); continue; }
+            if (typeof s.id !== 'string' || s.id.trim() === '') errors.push(`${label}.id muss ein nicht-leerer String sein`);
+            if (typeof s.name !== 'string' || s.name.trim() === '') errors.push(`${label}.name muss ein nicht-leerer String sein`);
+            if (typeof s.url !== 'string' || s.url.trim() === '') {
+                errors.push(`${label}.url muss ein nicht-leerer String sein`);
+            } else {
+                try { new URL(s.url); } catch { errors.push(`${label}.url muss eine gültige URL sein`); }
+            }
+            if (s.headers !== undefined && (typeof s.headers !== 'object' || s.headers === null || Array.isArray(s.headers)
+                || Object.values(s.headers).some((v) => typeof v !== 'string')))
+                errors.push(`${label}.headers muss ein Objekt aus Strings sein`);
+            if (s.transport !== undefined && !['auto', 'streamable-http', 'sse'].includes(s.transport))
+                errors.push(`${label}.transport muss 'auto', 'streamable-http' oder 'sse' sein`);
+            if (s.enabled !== undefined && typeof s.enabled !== 'boolean') errors.push(`${label}.enabled muss ein Boolean sein`);
+            if (s.id) {
+                if (seen.has(s.id)) errors.push(`${label}.id '${s.id}' ist doppelt`);
+                seen.add(s.id);
+            }
+        }
+        return errors;
+    }
+
+    /**
+     * Erzeugt einen eindeutigen Slug aus einem Namen.
+     * @param {string} name
+     * @param {Set<string>} existing
+     * @returns {string}
+     */
+    slugify(name, existing = new Set()) {
+        const base = String(name).toLowerCase().trim()
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'server';
+        let id = base; let n = 2;
+        while (existing.has(id)) { id = `${base}-${n}`; n++; }
+        return id;
+    }
+
+    /**
      * Wendet einen Partial-Patch an: validieren → mergen → persistieren → klassifizieren.
      * @param {Record<string, unknown>} patch
      * @returns {{ applied: string[], restartRequired: string[] }}
@@ -378,7 +442,8 @@ class Config {
             ...patch,
             whisper: { ...current.whisper, ...(patch.whisper || {}) },
             llm: { ...current.llm, ...(patch.llm || {}) },
-            badwords: patch.badwords !== undefined ? patch.badwords : current.badwords
+            badwords: patch.badwords !== undefined ? patch.badwords : current.badwords,
+            mcpServers: patch.mcpServers !== undefined ? patch.mcpServers : current.mcpServers
         };
 
         const errors = this.validateSettings(next);
@@ -397,6 +462,7 @@ class Config {
         this.whisper = { ...next.whisper };
         this.llm = { ...next.llm };
         this.badwords = next.badwords.map((w) => String(w)).filter(Boolean);
+        this.mcpServers = (next.mcpServers || []).map((s) => ({ ...s }));
 
         // Persistieren (config.json)
         this.persist();
@@ -420,7 +486,8 @@ class Config {
                     whisperPort: this.whisperPort,
                     whisper: this.whisper,
                     llm: this.llm,
-                    badwords: this.badwords
+                    badwords: this.badwords,
+                    mcpServers: this.mcpServers
                 },
                 null,
                 4

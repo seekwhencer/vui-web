@@ -67,6 +67,7 @@ export class Server {
             this.router?.transcribeBridge?.close(); // Transkriptions-WS-Clients terminate
             this.router?.logsWs?.close(); // WS-Clients terminate (sonst hängt httpServer.close())
             this.router?.tailService?.stop(); // tail-Child-Process SIGTERM
+            this.router?.mcp?.close(); // MCP-Verbindungen + SSE-Streams beenden (sonst blockiert --watch-Restart)
             this.httpServer.close(() => process.exit(0));
             // Offene Verbindungen aktiv beenden, sonst wartet close() ewig
             // und der Prozess läuft nicht aus (blockiert den --watch-Restart):

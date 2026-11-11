@@ -5,7 +5,7 @@ import en from './locales/en.json';
 import de from './locales/de.json';
 import it from './locales/it.json';
 
-const LANG_KEY = 'mtxui.lang';
+const LANG_KEY = 'ui.lang';
 const SUPPORTED = ['en', 'de', 'it'];
 
 function detectLng() {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const THEME_KEY = 'mtxui.theme';
+const THEME_KEY = 'ui.theme';
 
 function getSystemTheme() {
   if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {

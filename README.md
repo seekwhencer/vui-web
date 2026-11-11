@@ -118,7 +118,36 @@ Open the gear icon in the top bar to tune the model live. Changes apply immediat
 - **Kontext** — initial prompt, hotwords
 - **VAD** — voice-activity-detection filter + parameters
 - **Badwords** — words to strip from the transcript
+- **MCP** — external MCP servers (see [MCP servers](#mcp-servers))
 - **UI** — roundness + primary color (frontend-only, saved locally in the browser)
+
+## MCP servers
+
+The server can connect to external MCP servers (Streamable HTTP / SSE) and expose
+their tools to the LLM. Servers are configured at runtime in the **Settings** panel
+(MCP tab) and persisted to `server/config.json` under `mcpServers` — **no compose
+change is required**.
+
+### Docker networking
+
+The `url` of each MCP server must be reachable **from the `vui-server` container**:
+
+| MCP server location | URL to use |
+|---------------------|------------|
+| Same Docker network (`vui`) | container name as host, e.g. `http://weather-mcp:8080/mcp` |
+| On the Docker host | `http://host.docker.internal:8080/mcp` (already mapped) |
+| External / cloud | public URL |
+
+- **Optional:** each MCP server can run as its own Docker service (e.g. `weather-mcp`)
+  on the `vui` network, with `depends_on` for start order. Not required — any
+  reachable HTTP endpoint works.
+- **Auth:** set per-server `headers` (forwarded on every request, e.g.
+  `Authorization: Bearer …`), or pass global env vars to `vui-server` and use
+  placeholders.
+- **No subprocess management** (unlike stdio MCP servers) — `vui-server` only holds
+  outbound HTTP/SSE connections.
+- **Security:** `headers` may contain secrets. Never hardcode them in `compose.yml`
+  or `config.json` — use env vars / placeholders.
 
 ## API
 
@@ -190,6 +219,7 @@ cd server && npm test          # vitest
 | Settings — VAD | <img src=".docs/screenshots/settings-voice-activity-detection-dark.png" alt="Settings VAD (dark)" width="360"> | <img src=".docs/screenshots/settings-voice-activity-detection-light.png" alt="Settings VAD (light)" width="360"> |
 | Settings — LLM | <img src=".docs/screenshots/settings-llm-dark.png" alt="Settings LLM (dark)" width="360"> | <img src=".docs/screenshots/settings-llm-light.png" alt="Settings LLM (light)" width="360"> |
 | Settings — Badwords | <img src=".docs/screenshots/settings-badwords-dark.png" alt="Settings Badwords (dark)" width="360"> | <img src=".docs/screenshots/settings-badwords-light.png" alt="Settings Badwords (light)" width="360"> |
+| Settings — MCP | <img src=".docs/screenshots/settings-mcp-dark.png" alt="Settings MCP (dark)" width="360"> | <img src=".docs/screenshots/settings-mcp-light.png" alt="Settings MCP (light)" width="360"> |
 | Settings — UI | <img src=".docs/screenshots/settings-ui-dark.png" alt="Settings UI (dark)" width="360"> | <img src=".docs/screenshots/settings-ui-light.png" alt="Settings UI (light)" width="360"> |
 
 ## License

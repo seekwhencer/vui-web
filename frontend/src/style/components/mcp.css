@@ -1,0 +1,150 @@
+/* MCP-Tab (Settings) */
+.mcp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.mcp__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.mcp__header h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--color-text);
+}
+
+.mcp__error {
+  color: var(--color-error);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.mcp__warning {
+  color: var(--color-validation);
+  background: var(--color-validation-subtle);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.mcp__loading,
+.mcp__empty {
+  color: var(--color-text-secondary);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.mcp__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mcp__item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mcp__item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mcp__cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
+}
+
+.mcp__tools-count {
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
+}
+
+.mcp__item-error {
+  color: var(--color-error);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.mcp__status {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.mcp__status--ok {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.mcp__status--error {
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.mcp__status--disabled,
+.mcp__status--off {
+  background: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+}
+
+.mcp__tools {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.mcp__tools code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.mcp__item-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mcp__form {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mcp__form h4 {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--color-text);
+}
+
+.mcp__form-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}

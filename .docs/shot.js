@@ -71,7 +71,7 @@ async function shot(page, file) {
     await goto(page, BASE + '/settings');
     const settingsTab = page.locator('.settings__tab');
     await settingsTab.first().waitFor({ timeout: 15000 });
-    const expectedTabs = ['basic', 'decoding', 'thresholds', 'context', 'vad', 'llm', 'badwords', 'ui'];
+    const expectedTabs = ['basic', 'decoding', 'thresholds', 'context', 'vad', 'llm', 'badwords', 'mcp', 'ui'];
     const tabCount = await settingsTab.count();
     if (tabCount !== expectedTabs.length) {
       throw new Error(`Expected ${expectedTabs.length} settings tabs (${expectedTabs.join(', ')}), found ${tabCount}`);

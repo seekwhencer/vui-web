@@ -85,6 +85,7 @@
       "vad": "Rilevamento voce (VAD)",
       "badwords": "Parole da filtrare",
       "llm": "LLM",
+      "mcp": "MCP",
       "ui": "UI"
     },
     "fields": {
@@ -120,6 +121,37 @@
       "llmSystemPrompt": "Prompt di sistema",
       "radiusFactor": "Arrotondamento",
       "primaryHue": "Colore primario"
+    }
+  },
+  "mcp": {
+    "title": "Server MCP",
+    "add": "Aggiungi server",
+    "addTitle": "Aggiungi server MCP",
+    "editTitle": "Modifica server MCP",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "save": "Salva",
+    "enable": "Attiva",
+    "disable": "Disattiva",
+    "reconnect": "Riconnetti",
+    "showTools": "Strumenti",
+    "tools": "strumenti",
+    "empty": "Nessun server MCP configurato.",
+    "loading": "Caricamento…",
+    "confirmDelete": "Eliminare questo server MCP?",
+    "hint": "Le modifiche hanno effetto immediato.",
+    "noToolSupport": "Il tuo backend LLM non supporta il tool calling. Gli strumenti sono elencati ma non vengono chiamati in chat.",
+    "status": {
+      "connected": "Connesso",
+      "disconnected": "Disconnesso",
+      "disabled": "Disattivato",
+      "error": "Errore"
+    },
+    "fields": {
+      "name": "Nome",
+      "url": "URL",
+      "headers": "Header (KEY=VALUE per riga)",
+      "enabled": "Attivato"
     }
   },
   "about": {

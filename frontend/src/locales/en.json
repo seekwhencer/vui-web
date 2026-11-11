@@ -85,6 +85,7 @@
       "vad": "Voice Activity Detection",
       "badwords": "Badwords",
       "llm": "LLM",
+      "mcp": "MCP",
       "ui": "UI"
     },
     "fields": {
@@ -120,6 +121,37 @@
       "llmSystemPrompt": "System prompt",
       "radiusFactor": "Roundness",
       "primaryHue": "Primary color"
+    }
+  },
+  "mcp": {
+    "title": "MCP Servers",
+    "add": "Add server",
+    "addTitle": "Add MCP server",
+    "editTitle": "Edit MCP server",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "enable": "Enable",
+    "disable": "Disable",
+    "reconnect": "Reconnect",
+    "showTools": "Tools",
+    "tools": "tools",
+    "empty": "No MCP servers configured.",
+    "loading": "Loading…",
+    "confirmDelete": "Delete this MCP server?",
+    "hint": "Changes apply immediately.",
+    "noToolSupport": "Your LLM backend does not support tool calling. Tools are listed but not invoked in chat.",
+    "status": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "disabled": "Disabled",
+      "error": "Error"
+    },
+    "fields": {
+      "name": "Name",
+      "url": "URL",
+      "headers": "Headers (KEY=VALUE per line)",
+      "enabled": "Enabled"
     }
   },
   "about": {

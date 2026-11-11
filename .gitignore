@@ -8,7 +8,7 @@ parakeet
 dist/
 frontend/dist/
 
-# Secrets / local runtime config (enthält u. a. mediamtxAuthToken)
+# Server
 server/config.json
 .env
 

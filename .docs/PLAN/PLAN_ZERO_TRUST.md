@@ -513,6 +513,41 @@ Audit-Einträge.
 LLM-Darstellung. Die Freigabe bindet sich an den Hash der
 gespeicherten Parameter.
 
+### Schritt 8b: Frontend — Tool-Policy-UI (neu)
+
+Tool-Policies werden **nicht nur** über `config.json` konfiguriert,
+sondern über die Settings-UI — gleiches Muster wie `McpSettings.jsx`
+(MCP-Server-Verwaltung).
+
+**Dateien:**
+
+- `frontend/src/components/ToolPolicySettings.jsx` (neu)
+- `frontend/src/api/settings.js` (bestehend — `getSettings`/`updateSettings` nutzen)
+- `frontend/src/pages/SettingsPage.jsx` (geändert — neuer Tab "Security")
+- `frontend/src/locales/{en,de,it}.json` (geändert — i18n-Strings)
+- `frontend/src/style/components/tool-policy.css` (neu)
+
+**Verhalten:**
+
+1. Neuer Tab "Security" in `SettingsPage.jsx` (neben Whisper, LLM, MCP).
+2. Liste aller Tools der verbundenen MCP-Server (aus
+   `GET /api/mcp/servers/:id/tools`).
+3. Pro Tool ein Dropdown: `read` | `write` | `execute` | `deny`.
+   Default (nicht gesetzt): `deny` (deny-by-default, visuell markiert).
+4. Save → `PUT /api/settings` mit `security.toolPolicies`-Patch.
+   Server validiert (`Config.validateSecurityParams`), persistiert,
+   wirkt ohne Neustart (`runtimeKeys`).
+5. Unklassifizierte Tools werden als "deny (Default)" angezeigt —
+   der Benutzer sieht, was gesperrt ist.
+
+**API:** Keine neuen Endpunkte. `GET /api/settings` liefert
+`security.toolPolicies`, `PUT /api/settings` akzeptiert den Patch.
+Das ist konsistent mit dem bestehenden Settings-Muster
+(Whisper/LLM/Badwords).
+
+**Tests:** `frontend/src/components/ToolPolicySettings.test.jsx`
+(neu) — Rendering, Dropdown-Wechsel, Save-Call, i18n.
+
 ---
 
 ## Phase 3: Prompt-Injection-Härtung
@@ -876,7 +911,11 @@ frontend/
 └── src/
     ├── components/
     │   ├── ApprovalDialog.jsx     (NEU)
+    │   ├── ToolPolicySettings.jsx (NEU)
     │   ├── ChatView.jsx           (geändert: Approval-Dialog einbinden)
+    │   └── ...                    (bestehend)
+    ├── pages/
+    │   ├── SettingsPage.jsx       (geändert: Security-Tab)
     │   └── ...                    (bestehend)
     ├── api/
     │   ├── actions.js             (NEU)
@@ -892,7 +931,8 @@ frontend/
     └── style/
         └── components/
             ├── approval.css       (NEU)
-            └── index.css          (geändert: approval.css importieren)
+            ├── tool-policy.css    (NEU)
+            └── index.css          (geändert: approval.css + tool-policy.css importieren)
 ```
 
 ---
@@ -910,6 +950,7 @@ frontend/
 | 7 | 2 | Chat-Loop | `Router/index.js` | 4,6 |
 | 8 | 2 | Approval-Endpunkte | `Router/index.js`, `test/router-approval.test.js` | 6 |
 | 9 | 2 | Frontend-Dialog | `ApprovalDialog.jsx`, `api/actions.js`, `useChatStream.js`, i18n, CSS | 8 |
+| 9b | 2 | Tool-Policy-UI | `ToolPolicySettings.jsx`, `SettingsPage.jsx`, i18n, CSS | 5 |
 | 10 | 3 | System-Prompt | `Security/SystemPrompt.js` | — |
 | 11 | 3 | Untrusted-Wrapping | `Security/Untrusted.js`, `test/security-untrusted.test.js` | — |
 | 12 | 3 | NetworkGuard | `Security/NetworkGuard.js`, `test/security-networkguard.test.js` | — |
@@ -932,7 +973,7 @@ Keine Zeile überspringt eine Abhängigkeit.
 | System-Prompt ist keine Sicherheitsgrenze | Policy Engine + Approval Flow sind die Grenze. Prompt reduziert nur Wahrscheinlichkeit. |
 | Untrusted-Data-Wrapping ist heuristisch | LLM kann die Markierung ignorieren. Die echte Grenze ist die Tool-Klassifikation (read vs. write/execute). |
 | DNS-Rebinding (Domain → private IP nach Prüfung) | `NetworkGuard` prüft **nach** DNS-Auflösung. Für vollständigen Schutz: Egress-Proxy (Phase 2+). |
-| MCP-Server mit `write`-Tools, die als `read` deklariert sind | Tool-Klassifikation ist manuell (Config). Default-Deny schützt vor Vergessen. |
+| MCP-Server mit `write`-Tools, die als `read` deklariert sind | Tool-Klassifikation ist manuell (Settings-UI + config.json). Default-Deny schützt vor Vergessen. |
 | Kein Auth (Single-User) | `user_id`/`tenant_id`-Felder im Datenmodell. Auth kommt in Phase 2+ (OIDC). |
 | LLM ohne Function-Calling (Graceful Degradation) | Bestehendes Verhalten bleibt: keine Tools, nur Chat. Policy-Loop wird übersprungen. |
 
@@ -940,7 +981,7 @@ Keine Zeile überspringt eine Abhängigkeit.
 
 ## Abnahme (Definition of Done)
 
-- [ ] Alle 17 Schritte implementiert, Tests grün.
+- [ ] Alle 18 Schritte implementiert, Tests grün.
 - [ ] `npm test` in `server/` und `frontend/` grün.
 - [ ] Prompt-Injection-Szenarien (direct, indirect, tool-chain) getestet + blockiert.
 - [ ] Replay-Angriffe (doppelte Ausführung, abgelaufene Freigabe, manipulierte Parameter) getestet + blockiert.
@@ -948,6 +989,7 @@ Keine Zeile überspringt eine Abhängigkeit.
 - [ ] Self-Approval unmöglich (LLM hat keinen Zugriff auf Approval-Endpunkte).
 - [ ] Audit-Log enthält alle Ereignisse (Propose, Approve, Reject, Execute, Deny).
 - [ ] Frontend-Approval-Dialog zeigt vollständige serverseitige Parameter.
+- [ ] Tool-Policies über Settings-UI konfigurierbar (Tab "Security", pro Tool read/write/execute/deny).
 - [ ] `config.json`-Schema um `security`-Block erweitert, Validierung + i18n.
 - [ ] Keine bestehenden Tests gelöscht oder geändert (nur ergänzt).
 - [ ] `.gitignore` enthält `server/data/`.

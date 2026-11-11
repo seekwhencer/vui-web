@@ -36,6 +36,14 @@ running on your own GPU. A built-in chat page talks to any Ollama or
 OpenAI-compatible LLM backend (llama.cpp, LM Studio, …) and can call external
 [MCP](#mcp-servers) tools. No cloud, no API keys, no data leaves your machine.
 
+> AI used locally:
+> - Engine: **llama.cpp**
+> - Model: **Qwen3.8-27B**
+> - Additional Draft Model: **Qwen3.8-27B-DFlash2 (incoai)**
+> - Projection Layer (Vision)
+> - VS Code
+> - Kilo Code Extension (opencode)
+
 ## Features
 
 - **Live transcription** — speak, watch the text appear in near real-time.

@@ -97,7 +97,7 @@
 }
 
 .chat-input__textarea {
-  flex: 1;
+  width: 100%;
   min-height: 72px;
   font-family: inherit;
   font-size: var(--fs-md);

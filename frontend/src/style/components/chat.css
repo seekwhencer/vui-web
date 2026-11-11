@@ -414,16 +414,44 @@
   font-size: var(--fs-xs);
 }
 
-/* Eingabe */
+/* Eingabe: Textarea oben, darunter Aktionszeile (Aufnahme links, Effort mittig, Senden rechts) */
 .chat-input {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--space-3);
   margin-top: var(--space-5);
 }
 
+.chat-input__actions {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.chat-input__record {
+  justify-self: start;
+}
+
+.chat-input__record--recording {
+  color: var(--color-error);
+  border-color: var(--color-error);
+  animation: voice-pulse 1.5s ease-in-out infinite;
+}
+
+.chat-input__record--recording:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+  background-color: color-mix(in srgb, var(--color-error) 10%, transparent);
+}
+
+.chat-input__send {
+  justify-self: end;
+}
+
 .chat-input__effort {
   flex: none;
+  justify-self: center;
   height: 44px;
   padding: 0 var(--space-2);
   border: 1px solid var(--color-border);
@@ -451,110 +479,6 @@
 .chat-input__effort:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Voice-Steuerung (Mic + Status + Interim) */
-.voice-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-
-.voice-controls__mic {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border: none;
-  border-radius: var(--radius-pill);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--transition), box-shadow var(--transition);
-}
-
-.voice-controls__mic:hover {
-  background-color: var(--color-primary-hover);
-}
-
-.voice-controls__mic--recording {
-  background-color: var(--color-error);
-  animation: voice-pulse 1.5s ease-in-out infinite;
-}
-
-.voice-controls__mic--recording:hover {
-  background-color: color-mix(in srgb, var(--color-error) 85%, black);
-}
-
-.voice-controls__status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-alt);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--color-border);
-}
-
-.voice-controls__status--ready {
-  color: var(--color-success);
-}
-
-.voice-controls__status--recording {
-  color: var(--color-error);
-}
-
-.voice-controls__status--disconnected {
-  color: var(--color-muted);
-}
-
-.voice-controls__status--error {
-  color: var(--color-error);
-}
-
-.voice-controls__interim {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-sm);
-  font-style: italic;
-  color: var(--color-primary);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Kompakter Mic-Button in der ChatInput */
-.chat-input__mic {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-primary);
-  cursor: pointer;
-  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
-}
-
-.chat-input__mic:hover {
-  background-color: var(--color-primary-subtle);
-  border-color: var(--color-primary);
-}
-
-.chat-input__mic--recording {
-  color: var(--color-error);
-  border-color: var(--color-error);
-  animation: voice-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes voice-pulse {

@@ -9,7 +9,6 @@ import useTypewriter from '../hooks/useTypewriter.js';
 import ChatInput from '../components/ChatInput.jsx';
 import ChatView from '../components/ChatView.jsx';
 import ChatHistory from '../components/ChatHistory.jsx';
-import VoiceControls from '../components/VoiceControls.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
 export default function ChatPage() {
@@ -185,12 +184,6 @@ export default function ChatPage() {
           conversationId={activeId}
         />
 
-        <VoiceControls
-          isRecording={isRecording}
-          interimText={interimText}
-          onToggle={handleVoiceToggle}
-        />
-
         <ChatInput
           onSubmit={handleSubmit}
           onAbort={abort}
@@ -199,6 +192,8 @@ export default function ChatPage() {
           value={displayValue}
           onChange={setInputValue}
           readOnly={isRecording}
+          isRecording={isRecording}
+          onToggleRecording={handleVoiceToggle}
         />
       </div>
     </div>

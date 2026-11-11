@@ -1,0 +1,1174 @@
+openapi: 3.0.3
+
+info:
+  title: vui-web API
+  version: 0.0.1
+  description: |
+    Self-hosted, real-time speech-to-text web app with an integrated LLM chat.
+
+    The Node.js server (`vui-server`) exposes a small REST API for settings,
+    chat, and MCP tool management, plus two WebSocket endpoints for live
+    transcription and log streaming. All inference (ASR + LLM) runs locally —
+    no cloud, no API keys.
+
+    ## Conventions
+
+    - **JSON envelope** — most endpoints wrap their payload in
+      `{ success: true, data: ... }` on success and
+      `{ success: false, error: "..." }` on failure.
+    - **Central error handler** — validation and unexpected errors are returned
+      as `{ error, status: "error", code }` (see `Error` schema).
+    - **Settings** — Whisper/LLM/badword/MCP settings are read and written via
+      `/api/settings` and persisted to `server/config.json`. Changes to most
+      parameters apply immediately (no restart); `serverPort` requires a restart.
+    - **Chat streaming** — `POST /api/chat/stream` returns a Server-Sent Events
+      (SSE) stream. Events: `thinking`, `answer`, `tool_call`, `tool_result`,
+      `done`, `error`.
+    - **MCP** — external [Model Context Protocol](https://modelcontextprotocol.io)
+      servers (Streamable HTTP / SSE) can be registered at runtime; their tools
+      are exposed to the LLM for automatic function-calling.
+
+  contact:
+    name: vui-web
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development / Docker Compose default (SERVER_PORT=3000)
+
+tags:
+  - name: Health
+    description: Liveness probe
+  - name: Settings
+    description: Read/update Whisper, LLM, badword, and MCP settings
+  - name: Chat
+    description: LLM chat (non-streaming JSON + SSE streaming)
+  - name: MCP
+    description: Manage external MCP servers, inspect tools, and call tools
+  - name: WebSocket
+    description: Live transcription and log streaming (binary/JSON over WS)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns a simple liveness indicator.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+              example:
+                status: ok
+
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Read current settings
+      description: |
+        Returns the full current settings object: Whisper transcription
+        parameters, LLM configuration, badword list, and MCP server list.
+      operationId: getSettings
+      responses:
+        '200':
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Settings'
+              example:
+                success: true
+                data:
+                  serverPort: 3000
+                  verbose: false
+                  whisperHost: vui-service
+                  whisperPort: 10300
+                  whisper:
+                    language: de
+                    temperature: [0]
+                    prompt: ''
+                    translate: false
+                    beamSize: 5
+                    bestOf: 5
+                    patience: 1.0
+                    lengthPenalty: 1.0
+                    repetitionPenalty: 1.0
+                    compressionRatioThreshold: 2.4
+                    logProbThreshold: -1.0
+                    noSpeechThreshold: 0.6
+                    conditionOnPreviousText: true
+                    initialPrompt: ''
+                    hotwords: ''
+                    vadFilter: false
+                    vadParameters: {}
+                  llm:
+                    api: openai
+                    host: ''
+                    port: 8080
+                    model: ''
+                    systemPrompt: You are a helpful assistant. Answer in markdown format.
+                  badwords: []
+                  mcpServers: []
+    put:
+      tags: [Settings]
+      summary: Update settings (partial)
+      description: |
+        Applies a partial patch to the settings, validates the merged result,
+        and persists it to `config.json`. Nested objects (`whisper`, `llm`) are
+        deep-merged; `badwords` and `mcpServers` are replaced wholesale when
+        provided.
+
+        The response reports which changed keys were applied at runtime
+        (`applied`) and which require a server restart (`restartRequired`).
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsPatch'
+            example:
+              whisper:
+                language: en
+                vadFilter: true
+                vadParameters:
+                  threshold: 0.5
+                  min_silence_duration_ms: 200
+              llm:
+                host: llama.ai.home
+                port: 80
+                model: /models/Qwen3.8-27B.gguf
+              badwords:
+                - Vielen Dank.
+      responses:
+        '200':
+          description: Settings updated and persisted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Settings'
+                  applied:
+                    type: array
+                    description: Changed keys that took effect without a restart.
+                    items:
+                      type: string
+                    example: [whisper, llm, badwords]
+                  restartRequired:
+                    type: array
+                    description: Changed keys that require a server restart.
+                    items:
+                      type: string
+                    example: []
+        '400':
+          description: Validation failed (merged settings are invalid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: whisperPort muss eine Ganzzahl zwischen 1 und 65535 sein
+                status: error
+                code: invalid_settings
+
+  /api/chat:
+    post:
+      tags: [Chat]
+      summary: Non-streaming chat
+      description: |
+        Sends a question (plus optional history) to the configured LLM backend
+        and returns the complete answer as JSON.
+
+        If MCP tools are connected and the backend supports function-calling,
+        the server runs a tool loop (up to 10 turns) before returning the final
+        answer. Otherwise it degrades gracefully to a plain chat.
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            example:
+              question: What is the weather in Berlin?
+              history:
+                - role: user
+                  content: Hi
+                - role: assistant
+                  content: Hello! How can I help?
+      responses:
+        '200':
+          description: LLM answer.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          answer:
+                            type: string
+                            description: The final assistant answer (Markdown).
+              example:
+                success: true
+                data:
+                  answer: 'It is 18°C and partly cloudy in Berlin.'
+        '400':
+          description: Missing or empty `question`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: Missing "question" in request body
+        '503':
+          description: LLM backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: LLM is not configured. Set LLM_HOST.
+        '500':
+          description: LLM call failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: Chat fehlgeschlagen
+
+  /api/chat/stream:
+    post:
+      tags: [Chat]
+      summary: Streaming chat (SSE)
+      description: |
+        Streams the LLM answer as Server-Sent Events. The request body is the
+        same as `POST /api/chat`, plus an optional `reasoning_effort`.
+
+        **SSE events** (each `data:` payload is JSON unless noted):
+
+        | Event         | Data                                                        |
+        |---------------|-------------------------------------------------------------|
+        | `thinking`    | string — reasoning/thinking token (reasoning models)        |
+        | `answer`      | string — answer token                                       |
+        | `tool_call`   | `{ id, name, arguments }` — an MCP tool the LLM requested   |
+        | `tool_result` | `{ id, content, isError }` — result of executing that tool  |
+        | `done`        | `{ tokens: { prompt, completion, total }, model }`          |
+        | `error`       | `{ message }` — stream failed                               |
+
+        The stream always ends with a `done` event (or `error`). Client aborts
+        are handled gracefully via `AbortController`.
+      operationId: chatStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ChatRequest'
+                - type: object
+                  properties:
+                    reasoning_effort:
+                      type: string
+                      description: Optional reasoning-effort hint for the LLM.
+                      example: high
+      responses:
+        '200':
+          description: SSE stream of chat events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream.
+              example: |
+                event: thinking
+                data: "Let me check the weather..."
+
+                event: answer
+                data: "It is "
+
+                event: answer
+                data: "18°C in Berlin."
+
+                event: done
+                data: {"tokens":{"prompt":42,"completion":17,"total":59},"model":"Qwen3.8-27B"}
+        '400':
+          description: Missing or empty `question`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: Missing "question" in request body
+        '503':
+          description: LLM backend is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: LLM is not configured. Set LLM_HOST.
+
+  /api/mcp/servers:
+    get:
+      tags: [MCP]
+      summary: List MCP servers
+      description: Returns all configured MCP servers with their live connection status.
+      operationId: listMcpServers
+      responses:
+        '200':
+          description: List of MCP servers.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          servers:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/McpServerStatus'
+              example:
+                success: true
+                data:
+                  servers:
+                    - id: gitea
+                      name: Gitea
+                      enabled: true
+                      url: http://sync.gitea.home/mcp
+                      headers: {}
+                      transport: auto
+                      status: connected
+                      transportType: streamable-http
+                      toolCount: 3
+                      error: null
+    post:
+      tags: [MCP]
+      summary: Add an MCP server
+      description: |
+        Registers a new MCP server and connects to it. The server `id` is
+        generated server-side from the `name` (slugified; collisions get `-2`,
+        `-3`, …). If `enabled` is not `false`, the server is connected
+        immediately.
+      operationId: addMcpServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerInput'
+            example:
+              name: Weather
+              url: http://weather-mcp:8080/mcp
+              headers:
+                Authorization: Bearer <token>
+              transport: auto
+              enabled: true
+      responses:
+        '201':
+          description: Server created (and connected if enabled).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          server:
+                            $ref: '#/components/schemas/McpServerStatus'
+                          result:
+                            $ref: '#/components/schemas/McpConnectResult'
+              example:
+                success: true
+                data:
+                  server:
+                    id: weather
+                    name: Weather
+                    enabled: true
+                    url: http://weather-mcp:8080/mcp
+                    headers: {}
+                    transport: auto
+                    status: connected
+                    transportType: streamable-http
+                    toolCount: 2
+                    error: null
+                  result:
+                    id: weather
+                    status: connected
+                    toolCount: 2
+                    transport: streamable-http
+        '400':
+          description: Invalid server entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: mcpServers[0].url muss eine gültige URL sein
+                status: error
+                code: invalid_mcp_server
+
+  /api/mcp/servers/{id}:
+    put:
+      tags: [MCP]
+      summary: Update an MCP server (partial)
+      description: |
+        Partially updates an existing MCP server. The `id` is immutable. If
+        `url`, `headers`, `transport`, or `enabled` changed, the server is
+        reconnected (or disconnected when disabled).
+      operationId: updateMcpServer
+      parameters:
+        - $ref: '#/components/parameters/ServerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerPatch'
+            example:
+              name: Weather (updated)
+              enabled: false
+      responses:
+        '200':
+          description: Server updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          server:
+                            $ref: '#/components/schemas/McpServerStatus'
+                          result:
+                            oneOf:
+                              - $ref: '#/components/schemas/McpConnectResult'
+                              - type: 'null'
+                            description: Connection result, or `null` when disabled.
+        '400':
+          description: Invalid server entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: mcpServers[0].url muss eine gültige URL sein
+                status: error
+                code: invalid_mcp_server
+        '404':
+          description: Server not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: MCP-Server nicht gefunden
+                status: error
+    delete:
+      tags: [MCP]
+      summary: Remove an MCP server
+      description: Disconnects and removes an MCP server from the configuration.
+      operationId: removeMcpServer
+      parameters:
+        - $ref: '#/components/parameters/ServerId'
+      responses:
+        '200':
+          description: Server removed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          removed:
+                            type: string
+                            description: The id of the removed server.
+                            example: weather
+              example:
+                success: true
+                data:
+                  removed: weather
+
+  /api/mcp/servers/{id}/reconnect:
+    post:
+      tags: [MCP]
+      summary: Reconnect an MCP server
+      description: Drops the existing connection and reconnects to the server.
+      operationId: reconnectMcpServer
+      parameters:
+        - $ref: '#/components/parameters/ServerId'
+      responses:
+        '200':
+          description: Reconnection result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          server:
+                            $ref: '#/components/schemas/McpServerStatus'
+                          result:
+                            $ref: '#/components/schemas/McpConnectResult'
+              example:
+                success: true
+                data:
+                  server:
+                    id: weather
+                    name: Weather
+                    enabled: true
+                    url: http://weather-mcp:8080/mcp
+                    headers: {}
+                    transport: auto
+                    status: connected
+                    transportType: streamable-http
+                    toolCount: 2
+                    error: null
+                  result:
+                    id: weather
+                    status: connected
+                    toolCount: 2
+                    transport: streamable-http
+
+  /api/mcp/servers/{id}/tools:
+    get:
+      tags: [MCP]
+      summary: List tools of an MCP server
+      description: Returns the tools exposed by a connected MCP server.
+      operationId: listMcpTools
+      parameters:
+        - $ref: '#/components/parameters/ServerId'
+      responses:
+        '200':
+          description: Tool list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tools:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/McpTool'
+              example:
+                success: true
+                data:
+                  tools:
+                    - name: get_weather
+                      description: Get the current weather for a city.
+                      inputSchema:
+                        type: object
+                        properties:
+                          city:
+                            type: string
+                      serverId: weather
+                      toolName: get_weather
+        '404':
+          description: Server not found (or not connected).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: MCP-Server nicht gefunden
+
+  /api/mcp/capability:
+    get:
+      tags: [MCP]
+      summary: Check LLM function-calling support
+      description: |
+        Probes the configured LLM backend to determine whether it supports
+        OpenAI-style function-calling (tools). The result is cached and
+        invalidated when the backend/model changes. Used by the UI to show a
+        hint when MCP tools cannot be invoked.
+      operationId: getMcpCapability
+      responses:
+        '200':
+          description: Capability result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          toolSupport:
+                            type: boolean
+                            description: "true if the backend supports function-calling."
+              example:
+                success: true
+                data:
+                  toolSupport: true
+
+  /api/mcp/call:
+    post:
+      tags: [MCP]
+      summary: Direct tool call (debug)
+      description: |
+        Executes a single MCP tool directly, bypassing the LLM. Intended for
+        testing and debugging tool integrations.
+      operationId: callMcpTool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serverId, name]
+              properties:
+                serverId:
+                  type: string
+                  description: Id of the MCP server.
+                  example: weather
+                name:
+                  type: string
+                  description: Original tool name (without the server prefix).
+                  example: get_weather
+                arguments:
+                  type: object
+                  description: Tool arguments.
+                  additionalProperties: true
+                  example:
+                    city: Berlin
+      responses:
+        '200':
+          description: Tool result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          content:
+                            type: string
+                            description: Text content returned by the tool.
+                          isError:
+                            type: boolean
+                            description: "true if the tool reported an error."
+              example:
+                success: true
+                data:
+                  content: '18°C, partly cloudy'
+                  isError: false
+        '400':
+          description: Missing `serverId` or `name`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureEnvelope'
+              example:
+                success: false
+                error: serverId und name erforderlich
+
+  /transcribe:
+    post:
+      tags: [WebSocket]
+      summary: Live transcription (WebSocket)
+      description: |
+        WebSocket endpoint for real-time speech-to-text.
+
+        - **Client → Server:** binary frames of raw PCM audio — 16 kHz, mono,
+          16-bit (little-endian). The server buffers ~2 s of audio per
+          transcription chunk and forwards it to the `faster-whisper` service
+          over the Wyoming protocol (TCP).
+        - **Server → Client:** JSON text frames.
+
+        | Frame | Shape | Meaning |
+        |-------|-------|---------|
+        | transcript | `{ text, isFinal }` | Transcribed text (final segment) |
+        | error | `{ error }` | Transcription failed |
+
+        Badwords are filtered server-side; overlapping words between chunks are
+        de-duplicated.
+      operationId: transcribe
+      responses:
+        '101':
+          description: WebSocket upgrade successful.
+        '400':
+          description: Upgrade failed (e.g. bad request).
+
+  /logs:
+    get:
+      tags: [WebSocket]
+      summary: Log stream (WebSocket)
+      description: |
+        WebSocket endpoint that streams server log lines to the client in real
+        time. Used by the in-app log viewer.
+      operationId: logs
+      responses:
+        '101':
+          description: WebSocket upgrade successful.
+        '400':
+          description: Upgrade failed (e.g. bad request).
+
+components:
+  parameters:
+    ServerId:
+      name: id
+      in: path
+      required: true
+      description: Id of the MCP server (generated from its name).
+      schema:
+        type: string
+        example: weather
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+
+    FailureEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Human-readable error message.
+
+    Error:
+      type: object
+      description: Central error-handler response shape.
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+        status:
+          type: string
+          example: error
+        code:
+          type: string
+          description: Machine-readable error code.
+          example: invalid_settings
+
+    Settings:
+      type: object
+      description: Full settings object (as returned by `GET /api/settings`).
+      properties:
+        serverPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          example: 3000
+        verbose:
+          type: boolean
+          example: false
+        whisperHost:
+          type: string
+          description: Host of the faster-whisper (Wyoming) service.
+          example: vui-service
+        whisperPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          example: 10300
+        whisper:
+          $ref: '#/components/schemas/WhisperSettings'
+        llm:
+          $ref: '#/components/schemas/LlmSettings'
+        badwords:
+          type: array
+          description: Words stripped from the transcript server-side.
+          items:
+            type: string
+          example: [Vielen Dank.]
+        mcpServers:
+          type: array
+          description: Configured MCP servers.
+          items:
+            $ref: '#/components/schemas/McpServer'
+
+    SettingsPatch:
+      type: object
+      description: |
+        Partial settings patch for `PUT /api/settings`. All properties are
+        optional; only provided keys are changed. Nested objects are deep-merged.
+      properties:
+        serverPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        verbose:
+          type: boolean
+        whisperHost:
+          type: string
+        whisperPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        whisper:
+          type: object
+          description: Partial Whisper settings (deep-merged).
+          additionalProperties: true
+        llm:
+          type: object
+          description: Partial LLM settings (deep-merged).
+          additionalProperties: true
+        badwords:
+          type: array
+          items:
+            type: string
+        mcpServers:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpServer'
+
+    WhisperSettings:
+      type: object
+      description: faster-whisper / Wyoming transcription parameters.
+      properties:
+        language:
+          type: string
+          description: Transcription language code.
+          example: de
+        temperature:
+          type: array
+          description: Sampling temperature(s).
+          items:
+            type: number
+          example: [0]
+        prompt:
+          type: string
+          description: Optional prompt.
+          example: ''
+        translate:
+          type: boolean
+          description: Translate to English.
+          example: false
+        beamSize:
+          type: integer
+          minimum: 0
+          example: 5
+        bestOf:
+          type: integer
+          minimum: 1
+          example: 5
+        patience:
+          type: number
+          example: 1.0
+        lengthPenalty:
+          type: number
+          example: 1.0
+        repetitionPenalty:
+          type: number
+          example: 1.0
+        compressionRatioThreshold:
+          type: number
+          example: 2.4
+        logProbThreshold:
+          type: number
+          example: -1.0
+        noSpeechThreshold:
+          type: number
+          example: 0.6
+        conditionOnPreviousText:
+          type: boolean
+          example: true
+        initialPrompt:
+          type: string
+          example: ''
+        hotwords:
+          type: string
+          description: Hotwords to bias recognition.
+          example: ''
+        vadFilter:
+          type: boolean
+          description: Enable voice-activity-detection filter.
+          example: false
+        vadParameters:
+          type: object
+          description: VAD parameters (only used when `vadFilter` is true).
+          properties:
+            threshold:
+              type: number
+              example: 0.5
+            min_speech_duration_ms:
+              type: integer
+              example: 250
+            min_silence_duration_ms:
+              type: integer
+              example: 200
+            window_size_samples:
+              type: integer
+              example: 512
+            speech_pad_ms:
+              type: integer
+              example: 40
+          additionalProperties: false
+
+    LlmSettings:
+      type: object
+      description: LLM backend configuration (OpenAI-compatible or Ollama).
+      properties:
+        api:
+          type: string
+          enum: [openai, ollama]
+          description: Backend type.
+          example: openai
+        host:
+          type: string
+          description: Host of the LLM backend.
+          example: llama.ai.home
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          example: 80
+        model:
+          type: string
+          description: Model name or path.
+          example: /models/Qwen3.8-27B.gguf
+        systemPrompt:
+          type: string
+          description: System prompt for the chat.
+          example: You are a helpful assistant. Answer in markdown format.
+
+    ChatRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+          description: The current user question.
+          example: What is the weather in Berlin?
+        history:
+          type: array
+          description: Optional earlier messages (system prompt is added server-side).
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+              content:
+                type: string
+
+    McpServer:
+      type: object
+      description: A configured MCP server entry (as stored in settings).
+      properties:
+        id:
+          type: string
+          description: Unique id (generated from the name).
+          example: weather
+        name:
+          type: string
+          example: Weather
+        url:
+          type: string
+          format: uri
+          description: MCP endpoint URL (reachable from the vui-server container).
+          example: http://weather-mcp:8080/mcp
+        headers:
+          type: object
+          description: Extra HTTP headers forwarded on every request (may contain secrets).
+          additionalProperties:
+            type: string
+          example:
+            Authorization: Bearer <token>
+        transport:
+          type: string
+          enum: [auto, streamable-http, sse]
+          description: Transport mode.
+          example: auto
+        enabled:
+          type: boolean
+          example: true
+
+    McpServerInput:
+      type: object
+      description: Payload for creating an MCP server (`id` is generated server-side).
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          example: Weather
+        url:
+          type: string
+          format: uri
+          example: http://weather-mcp:8080/mcp
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        transport:
+          type: string
+          enum: [auto, streamable-http, sse]
+          default: auto
+        enabled:
+          type: boolean
+          default: true
+
+    McpServerPatch:
+      type: object
+      description: Partial update for an MCP server (`id` is immutable).
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        transport:
+          type: string
+          enum: [auto, streamable-http, sse]
+        enabled:
+          type: boolean
+
+    McpServerStatus:
+      type: object
+      description: An MCP server with its live connection status.
+      properties:
+        id:
+          type: string
+          example: weather
+        name:
+          type: string
+          example: Weather
+        enabled:
+          type: boolean
+          example: true
+        url:
+          type: string
+          format: uri
+          example: http://weather-mcp:8080/mcp
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        transport:
+          type: string
+          enum: [auto, streamable-http, sse]
+          example: auto
+        status:
+          type: string
+          enum: [connected, disconnected, disabled, error]
+          description: Current connection status.
+          example: connected
+        transportType:
+          type: string
+          nullable: true
+          description: Negotiated transport actually in use.
+          example: streamable-http
+        toolCount:
+          type: integer
+          description: Number of tools exposed by the server.
+          example: 2
+        error:
+          type: string
+          nullable: true
+          description: Last connection error, if any.
+          example: null
+
+    McpConnectResult:
+      type: object
+      description: Result of a connect/reconnect operation.
+      properties:
+        id:
+          type: string
+          example: weather
+        status:
+          type: string
+          enum: [connected, error, disabled]
+          example: connected
+        toolCount:
+          type: integer
+          description: Present when `status` is `connected`.
+          example: 2
+        transport:
+          type: string
+          description: Present when `status` is `connected`.
+          example: streamable-http
+        error:
+          type: string
+          description: Present when `status` is `error`.
+
+    McpTool:
+      type: object
+      description: A tool exposed by an MCP server.
+      properties:
+        name:
+          type: string
+          description: Namespaced tool name (`{serverId}__{toolName}`).
+          example: weather__get_weather
+        description:
+          type: string
+          example: Get the current weather for a city.
+        inputSchema:
+          type: object
+          description: JSON Schema of the tool's input.
+          additionalProperties: true
+        serverId:
+          type: string
+          example: weather
+        toolName:
+          type: string
+          description: Original tool name (without prefix).
+          example: get_weather

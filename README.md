@@ -1,6 +1,6 @@
 <p align='center'>
   <h1 align='center' style='margin-bottom:0px'>vui-web</h1>
-  <p align='center'>faster-whisper Web UI</p>
+  <p align='center'>faster-whisper Web UI + LLM Chat with MCP use</p>
 </p>
 
 <p align="center">
@@ -29,15 +29,21 @@
 
 ---
 
-**vui-web** is a self-hosted, real-time speech-to-text web app. It captures your
-microphone in the browser, streams raw audio to a local Node.js server, and
-transcribes it with [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-running on your own GPU. No cloud, no API keys, no data leaves your machine.
+**vui-web** is a self-hosted, real-time speech-to-text web app with an integrated
+LLM chat. It captures your microphone in the browser, streams raw audio to a local
+Node.js server, and transcribes it with [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+running on your own GPU. A built-in chat page talks to any Ollama or
+OpenAI-compatible LLM backend (llama.cpp, LM Studio, …) and can call external
+[MCP](#mcp-servers) tools. No cloud, no API keys, no data leaves your machine.
 
 ## Features
 
 - **Live transcription** — speak, watch the text appear in near real-time.
-- **100% local** — audio and inference stay on your hardware.
+- **LLM chat** — conversation-based chat with SSE streaming, Markdown rendering,
+  reasoning-effort selector, and token/model stats.
+- **MCP tool calling** — connect external MCP servers; the LLM calls their tools
+  automatically (graceful degradation when the backend lacks function-calling).
+- **100% local** — audio, inference, and chat stay on your hardware.
 - **GPU accelerated** — runs `faster-whisper` via the `linuxserver/faster-whisper` image.
 - **Tunable model** — swap in any faster-whisper model (default: `large-v3-turbo`, German-tuned).
 - **Full Whisper control** — temperature, beam size, VAD, hotwords, thresholds, and more, editable live from the UI.
@@ -49,7 +55,7 @@ running on your own GPU. No cloud, no API keys, no data leaves your machine.
 ## Screenshots
 
 <p align="center">
-  <img src=".docs/screenshots/transcription-dark.png" alt="vui-web — Live Transcription (dark theme)" width="900">
+  <img src=".docs/screenshots/chat-dark.png" alt="vui-web — Chat (dark theme)" width="900">
 </p>
 
 
@@ -57,9 +63,10 @@ running on your own GPU. No cloud, no API keys, no data leaves your machine.
 
 | Layer     | Tech |
 |-----------|------|
-| Frontend  | React 19, Vite 8, JavaScript (no TypeScript), `react-router-dom`, `i18next`, `lucide-react` |
-| Server    | Node.js 20+, Express 5, `ws` (WebSocket), Wyoming client (raw TCP) |
+| Frontend  | React 19, Vite 8, JavaScript (no TypeScript), `react-router-dom`, `i18next`, `lucide-react`, `react-markdown` |
+| Server    | Node.js 20+, Express 5, `ws` (WebSocket), Wyoming client (raw TCP), `@modelcontextprotocol/client`, `axios` |
 | ASR       | `linuxserver/faster-whisper` (GPU), faster-whisper / large-v3-turbo |
+| LLM       | Ollama or any OpenAI-compatible API (llama.cpp, LM Studio, …) |
 | Runtime   | Docker + Docker Compose, NVIDIA runtime |
 
 ## Quick start
@@ -68,12 +75,13 @@ running on your own GPU. No cloud, no API keys, no data leaves your machine.
 
 - Docker + Docker Compose
 - An NVIDIA GPU with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed
+- *(optional)* An LLM backend (Ollama, llama.cpp, LM Studio, …) for the chat page
 
 ### Run
 
 ```bash
 # 1. Configure
-cp ".env default" .env      # then edit .env (model, language, ports)
+cp ".env default" .env      # then edit .env (model, language, ports, LLM)
 
 # 2. Start the stack
 docker compose up -d --build
@@ -82,13 +90,14 @@ docker compose up -d --build
 #    http://localhost:3000
 ```
 
-The stack starts three things:
+The stack starts two services:
 
 | Service       | What it does |
 |---------------|--------------|
 | `vui-service` | `faster-whisper` ASR engine (GPU) |
-| `vui-server`  | Node.js API + WebSocket bridge + serves the React app |
-| *(vui-tts)*   | Optional TTS (LocalAI) — commented out by default |
+| `vui-server`  | Node.js API + WebSocket bridge + LLM proxy + serves the React app |
+
+> An optional TTS service (`vui-tts`, LocalAI) is commented out in `compose.yml`.
 
 ## Configuration
 
@@ -101,22 +110,31 @@ All runtime configuration lives in `.env` (see `.env default` for the full list)
 | `WHISPER_PORT` | `10300` | Wyoming port of the faster-whisper service |
 | `WHISPER_LANG` | `de` | Default transcription language |
 | `WHISPER_MODEL` | `jimmymeister/whisper-large-v3-turbo-german-ct2` | faster-whisper model to load |
+| `LLM_API` | `openai` | LLM backend type: `openai` (OpenAI-compatible) or `ollama` |
+| `LLM_HOST` | *(empty)* | Host of the LLM backend |
+| `LLM_PORT` | `8080` | Port of the LLM backend |
+| `LLM_MODEL` | *(empty)* | Model name / path to use |
+| `LLM_SYSTEM_PROMPT` | `You are a helpful assistant…` | System prompt for the chat |
+| `TTS_HOST` | `vui-tts` | Host of the optional TTS service |
+| `TTS_PORT` | `8080` | Port of the optional TTS service |
+| `VITE_WS_HOST` | `localhost` | Host the browser uses for the WebSocket connection |
 
 > **Note:** Whisper transcription parameters (temperature, beam size, VAD, hotwords,
-> badwords, …) are **not** set via `.env` in normal use — they are managed at runtime
-> through the in-app **Settings** panel and persisted to `server/config.json`.
-> The `WHISPER_*` env vars act as initial defaults only.
+> badwords, …) and LLM settings are **not** set via `.env` in normal use — they are
+> managed at runtime through the in-app **Settings** panel and persisted to
+> `server/config.json`. The `WHISPER_*` / `LLM_*` env vars act as initial defaults only.
 
 ### Settings panel
 
 Open the gear icon in the top bar to tune the model live. Changes apply immediately
 (no restart) for most parameters. Sections:
 
-- **Basis** — language, temperature, prompt, translate-to-English
+- **Basis** — language, temperature, prompt, translate-to-English, Whisper host/port
 - **Decoding** — beam size, best-of, patience, length/repetition penalties
 - **Schwellwerte** — compression-ratio / log-prob / no-speech thresholds
 - **Kontext** — initial prompt, hotwords
 - **VAD** — voice-activity-detection filter + parameters
+- **LLM** — API type, host, port, model, system prompt
 - **Badwords** — words to strip from the transcript
 - **MCP** — external MCP servers (see [MCP servers](#mcp-servers))
 - **UI** — roundness + primary color (frontend-only, saved locally in the browser)
@@ -127,6 +145,10 @@ The server can connect to external MCP servers (Streamable HTTP / SSE) and expos
 their tools to the LLM. Servers are configured at runtime in the **Settings** panel
 (MCP tab) and persisted to `server/config.json` under `mcpServers` — **no compose
 change is required**.
+
+<p align="center">
+  <img src=".docs/screenshots/settings-mcp-dark.png" alt="vui-web — Settings - MCP (dark theme)" width="900">
+</p>
 
 ### Docker networking
 
@@ -154,9 +176,19 @@ The `url` of each MCP server must be reachable **from the `vui-server` container
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET`  | `/health` | Health check → `{ status: 'ok' }` |
-| `GET`  | `/api/settings` | Read current Whisper settings + badwords |
+| `GET`  | `/api/settings` | Read current Whisper + LLM settings + badwords |
 | `PUT`  | `/api/settings` | Update settings (validated, persisted to `config.json`) |
+| `POST` | `/api/chat` | Non-streaming LLM chat (JSON in/out) |
+| `POST` | `/api/chat/stream` | Streaming LLM chat (SSE out; events: `token`, `tool_call`, `tool_result`, `done`, `error`) |
 | `WS`   | `/transcribe` | Live transcription stream (binary PCM in, JSON text out) |
+| `GET`  | `/api/mcp/servers` | List MCP servers + connection status |
+| `POST` | `/api/mcp/servers` | Add an MCP server (ID generated from name) |
+| `PUT`  | `/api/mcp/servers/:id` | Update an MCP server (partial) |
+| `DELETE` | `/api/mcp/servers/:id` | Remove an MCP server |
+| `POST` | `/api/mcp/servers/:id/reconnect` | Reconnect an MCP server |
+| `GET`  | `/api/mcp/servers/:id/tools` | List tools exposed by a server |
+| `GET`  | `/api/mcp/capability` | Check if the LLM backend supports function-calling |
+| `POST` | `/api/mcp/call` | Direct tool call (debug) |
 
 ## Development
 
@@ -179,6 +211,8 @@ npm run dev
 
 ## How it works
 
+### Transcription
+
 ```
 Browser (React 19)
   │  getUserMedia → AudioWorklet → 16 kHz mono PCM
@@ -200,10 +234,39 @@ Browser (React 19)
    using the **Wyoming protocol** (TCP, not HTTP).
 4. The transcribed text is streamed back as JSON and rendered live.
 
+### Chat
+
+```
+Browser (React 19)
+  │  POST /api/chat/stream  (JSON: question, history)
+  │  SSE  ◄────────────────────────────────────────►  Node.js server (Express 5)
+  │                                                 │
+  │                                                 ├─► Llm (axios)
+  │                                                 │      │  OpenAI-compatible / Ollama API
+  │                                                 │      ▼
+  │                                                 │   LLM backend (local GPU)
+  │                                                 │
+  │                                                 ├─► McpManager
+  │                                                 │      │  Streamable HTTP / SSE
+  │                                                 │      ▼
+  │                                                 │   MCP servers (tools)
+  └─────────────────────────────────────────────────┘
+```
+
+1. The user types a question in the chat page.
+2. The server builds the message list (system prompt → history → question) and calls
+   the LLM backend via its OpenAI-compatible or Ollama API.
+3. If MCP tools are connected and the backend supports function-calling, the server
+   runs a **tool loop**: the LLM requests tool calls → the server executes them via
+   the MCP manager → results are appended → the LLM continues, up to 10 turns.
+4. Tokens are streamed back as **SSE events** (`token`, `tool_call`, `tool_result`,
+   `done`) and rendered live with Markdown.
+
 ### Tests
 
 ```bash
-cd server && npm test          # vitest
+cd server && npm test          # vitest (config, LLM, MCP, router)
+cd frontend && npm test        # vitest (hooks)
 ```
 
 ## All Screenshots

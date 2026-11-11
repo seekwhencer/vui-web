@@ -1,0 +1,12 @@
+  services:
+    vui-swagger:
+      image: swaggerapi/swagger-ui:latest
+      container_name: vui-swagger
+      volumes:
+        - ./swagger.yml:/app/swagger.yml
+      environment:
+        URLS: '[{"name":"VUI api","url":"/swagger.yml"}]'
+        SWAGGER_JSON: /app/swagger.yml
+      ports:
+        - "3010:8080"
+      restart: unless-stopped

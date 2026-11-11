@@ -61,9 +61,41 @@ async function shot(page, file) {
     await page.waitForTimeout(900);
     await shot(page, path.join(OUT, `transcription-${theme}.png`));
 
-    // 2) Chat screen via the top-right toggle ("Chat" label is locale-stable)
+    // 2) Chat screen: ask about MCP tools, wait for the answer, then screenshot
     await page.locator('.topnav__link', { hasText: 'Chat' }).click({ timeout: 15000 });
     await page.locator('.topnav__link--active', { hasText: 'Chat' }).waitFor({ timeout: 15000 });
+
+    const chatTextarea = page.locator('.chat-input__textarea');
+    await chatTextarea.waitFor({ timeout: 15000 });
+    await chatTextarea.fill('Welche Tools kannst du aktuell verwenden per MCP?');
+
+    const sendBtn = page.locator('.chat-input .btn--primary');
+    await sendBtn.click({ timeout: 15000 });
+
+    // While streaming, the send button is replaced by the stop button;
+    // when the stream finishes, the send button is back in the DOM.
+    await page.locator('.chat-input .btn--stop').waitFor({ timeout: 30000 });
+    await sendBtn.waitFor({ timeout: 120000 });
+
+    // The answer must be rendered (non-empty assistant bubble).
+    await page.waitForFunction(
+      () => {
+        const bubbles = document.querySelectorAll('.msg--assistant .msg__bubble');
+        const last = bubbles[bubbles.length - 1];
+        return last && last.textContent.trim().length > 0;
+      },
+      null,
+      { timeout: 30000 }
+    );
+
+    // Scroll the chat view back to the top (it auto-follows the stream to the bottom).
+    await page.evaluate(() => {
+      const el = document.querySelector('.chat-view');
+      if (el) {
+        el.style.scrollBehavior = 'auto';
+        el.scrollTop = 0;
+      }
+    });
     await page.waitForTimeout(900);
     await shot(page, path.join(OUT, `chat-${theme}.png`));
 

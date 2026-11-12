@@ -43,6 +43,17 @@
 * **Components:** Write functional components. Keep them small, reusable, and focused on a single responsibility.
 * **Styling:** Follow the existing styling pattern (e.g., Tailwind CSS, CSS Modules, or Styled Components) found in the `/frontend` directory.
 
+## Bild-Analyse (Vision)
+* Aktives Modell liest **keine Bilder**. `read` auf PNG/JPG zeigt dem Modell nichts.
+* Subagenten (`task`) greifen Bilddateien oft nicht ab und verlaufen sich im AGENTS-Kontext. Nicht für Vision nutzen.
+* **Workflow:** Bild selbst laden, an Ollama schicken. Script: `.docs/vision.js`
+  * Aufruf: `/home/mk/n/bin/node .docs/vision.js <bild-pfad> [prompt]`
+  * Node liegt **nicht im PATH**: `/home/mk/n/bin/node`
+  * Provider: Ollama über OpenAI API → `http://ollama.ai.home/v1`, Modell `qwen3.5:2b` (hat `image`-Input)
+  * **Langsam:** ~150s pro Bild. Bash-Timeout auf ≥ 300000ms setzen!
+  * Env-Overrides: `VISION_BASE_URL`, `VISION_MODEL`, `VISION_API_KEY`, `VISION_TIMEOUT`
+* Ausgabe = Beschreibung des Bildes. Nicht selbst raten, was im Bild steht.
+
 ## Strict Guidelines (Do Not Violate)
 1. **Never drop existing tests** to make your code pass. If a test fails, fix the underlying code implementation.
 2. **Never commit secrets**, API keys, or `.env` files. Always use placeholders or read from `process.env`.

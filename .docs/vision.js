@@ -1,8 +1,26 @@
 import fs from 'fs';
 import path from 'path';
 
-const BASE = (process.env.VISION_BASE_URL || 'http://ollama.ai.home/v1').replace(/\/+$/, '');
-const MODEL = process.env.VISION_MODEL || 'qwen3.5:2b';
+function loadEnv(file) {
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
+
+const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+loadEnv(path.join(scriptDir, '.env.default'));
+loadEnv(path.join(scriptDir, '.env'));
+
+const BASE = (process.env.VISION_BASE_URL || '').replace(/\/+$/, '');
+const MODEL = process.env.VISION_MODEL || '';
 const API_KEY = process.env.VISION_API_KEY || '';
 // Remote 2B-Modell braucht ~150s pro Bild. Timeout bewusst groß.
 const TIMEOUT = Number(process.env.VISION_TIMEOUT || 300000);

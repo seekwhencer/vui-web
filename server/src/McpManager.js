@@ -1,4 +1,5 @@
 import { Client, StreamableHTTPClientTransport, SSEClientTransport } from '@modelcontextprotocol/client';
+import { assertSafeUrl } from './Security/NetworkGuard.js';
 
 const MAX_MCP_TOOL_TURNS = 10;
 const NAME_SEP = '__';
@@ -62,6 +63,22 @@ class McpManager {
             url = new URL(server.url);
         } catch {
             return { id, status: 'error', error: `Ungültige URL: ${server.url}` };
+        }
+
+        // SSRF-Guard (Zero-Trust, Phase 3): blockiert private/loopback/link-local
+        // Ziele VOR der Verbindung. Fail closed — was nicht eindeutig öffentlich
+        // ist, wird nicht verbunden. Explizit erlaubte Hosts
+        // (security.allowedHosts) sind ausgenommen.
+        const guard = await assertSafeUrl(server.url, {
+            allowedHosts: this.config?.security?.allowedHosts,
+        });
+        if (!guard.ok) {
+            this.logger.error(this.label, `SSRF-Guard blockiert Verbindung: ${id}`, { url: server.url, reason: guard.reason });
+            this.connections.set(id, {
+                client: null, transport: null, server, tools: [],
+                status: 'error', error: `SSRF blockiert: ${guard.reason}`,
+            });
+            return { id, status: 'error', error: `SSRF blockiert: ${guard.reason}` };
         }
 
         const options = server.headers && Object.keys(server.headers).length > 0

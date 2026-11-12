@@ -18,6 +18,7 @@ let state = {
   pending: false,
   error: null,
   done: false,
+  pendingApprovals: [],
 };
 
 const listeners = new Set();
@@ -38,6 +39,31 @@ function abort() {
     abortController.abort();
     abortController = null;
   }
+}
+
+// Pending Approval-Aktionen (Zero-Trust): leben wie der Stream-Zustand auf
+// Modulebene, damit sie Seitenwechsel überleben. `approval_required`-Events
+// legen sie hier ab; der ApprovalDialog liest sie und entfernt sie nach
+// Auflösung. Die Parameter kommen serverseitig (vollständig, hash-gebunden)
+// — nicht aus dem LLM-Text.
+function addPendingApproval(action) {
+  const index = state.pendingApprovals.findIndex((a) => a.id === action.id);
+  if (index === -1) {
+    setState({ pendingApprovals: [...state.pendingApprovals, action] });
+    return;
+  }
+  // Bereits bekannt → Daten aktualisieren, Position (FIFO) behalten.
+  const next = state.pendingApprovals.slice();
+  next[index] = { ...next[index], ...action };
+  setState({ pendingApprovals: next });
+}
+
+function clearPendingApproval(id) {
+  setState({ pendingApprovals: state.pendingApprovals.filter((a) => a.id !== id) });
+}
+
+function getPendingApprovals() {
+  return state.pendingApprovals;
 }
 
 /**
@@ -119,6 +145,20 @@ async function run(question, history, reasoningEffort) {
         }
 
         flush();
+      } else if (event === 'approval_required') {
+        // Zero-Trust: write/execute-Tools werden NICHT ausgeführt, sondern
+        // als Freigabe vorgeschlagen → Aktion in den Store legen.
+        addPendingApproval({
+          id: data.actionId,
+          toolName: data.toolName,
+          arguments: data.arguments,
+          reason: data.reason,
+          expiresAt: data.expiresAt,
+          status: 'PENDING_APPROVAL',
+        });
+      } else if (event === 'approval_resolved') {
+        // Aktion wurde (ggf. woanders) aufgelöst → aus dem Store entfernen.
+        if (data && data.actionId) clearPendingApproval(data.actionId);
       } else if (event === 'done') {
         setState({ done: true, pending: false, tokens: data?.tokens || null, model: data?.model || null });
         flush();
@@ -198,5 +238,8 @@ function getSnapshot() {
  */
 export default function useChatStream() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
-  return { ...snapshot, run, setResult, abort };
+  return { ...snapshot, run, setResult, abort, addPendingApproval, clearPendingApproval };
 }
+
+// Named-Exports (für Tests + direkte Nutzung ohne Hook).
+export { run, setResult, abort, addPendingApproval, clearPendingApproval, getPendingApprovals };

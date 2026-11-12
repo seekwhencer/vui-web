@@ -1,6 +1,17 @@
 import express from 'express';
 import { createServer as createHttpServer } from 'node:http';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Router } from './Router/index.js';
+import { McpManager } from './McpManager.js';
+import { PolicyEngine } from './Security/PolicyEngine.js';
+import { ApprovalService } from './Security/ApprovalService.js';
+import { ActionStore } from './Security/ActionStore.js';
+import { Audit } from './Security/Audit.js';
+import { ExecutionGateway } from './Security/ExecutionGateway.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Main server class
@@ -38,8 +49,24 @@ export class Server {
      * @returns {Promise<void>}
      */
     async start() {
+        // Zero-Trust-Security-Dependencies instanziieren (Phase 1+2).
+        // Daten unter server/data/ (git-ignored): actions.json + audit.jsonl.
+        const dataDir = join(__dirname, 'data');
+        mkdirSync(dataDir, { recursive: true });
+        const store = new ActionStore(join(dataDir, 'actions.json'), this.logger);
+        const audit = new Audit(join(dataDir, 'audit.jsonl'), this.logger);
+        const policy = new PolicyEngine({ config: this.config, logger: this.logger });
+        const approval = new ApprovalService({ store, audit, policy, config: this.config, logger: this.logger });
+
+        // MCP-Manager wird zwischen Router und ExecutionGateway geteilt
+        // (gleiche Verbindungen/Tool-Registry).
+        const mcp = new McpManager({ config: this.config, logger: this.logger });
+        const gateway = new ExecutionGateway({ mcp, store, audit, config: this.config, logger: this.logger });
+
+        const security = { policy, approval, audit, gateway, store };
+
         // append the routes
-        this.router = new Router(this.config, this.httpServer, this.logger);
+        this.router = new Router(this.config, this.httpServer, this.logger, security, mcp);
         await this.router.define();
         this.app.use(this.router.router);
 

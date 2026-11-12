@@ -27,7 +27,7 @@
   --color-connection-subtle: color-mix(in srgb, var(--color-connection) 85%, black);
 
   /* Shape */
-  --radius-factor: 0.7;
+  --radius-factor: 0.2;
   --radius-sm: calc(6px * var(--radius-factor));
   --radius: calc(10px * var(--radius-factor));
   --radius-lg: calc(14px * var(--radius-factor));

@@ -62,6 +62,26 @@
       "max": "Max"
     }
   },
+  "approval": {
+    "title": "Action approval required",
+    "tool": "Tool",
+    "reason": "Reason",
+    "expires": "Expires",
+    "expired": "Expired",
+    "parameters": "Parameters (server-side)",
+    "approve": "Approve",
+    "reject": "Reject",
+    "close": "Close",
+    "result": {
+      "approved": "Action approved: {{tool}}",
+      "rejected": "Action rejected: {{tool}}",
+      "cancelled": "Action cancelled: {{tool}}",
+      "failed": "Action failed: {{tool}}",
+      "executing": "Action is running: {{tool}}",
+      "completed": "Action completed: {{tool}}",
+      "expired": "Action expired: {{tool}}"
+    }
+  },
   "nav": {
     "transcription": "Transcription",
     "chat": "Chat",
@@ -152,6 +172,24 @@
       "url": "URL",
       "headers": "Headers (KEY=VALUE per line)",
       "enabled": "Enabled"
+    },
+    "policy": {
+      "label": "Policy",
+      "default": "deny (Default)",
+      "hint": "Unset tools are denied by default (deny-by-default).",
+      "saved": "Saved",
+      "loading": "Loading…",
+      "options": {
+        "read": "Read",
+        "write": "Write",
+        "execute": "Execute",
+        "deny": "Deny"
+      }
+    },
+    "ssrf": {
+      "title": "SSRF Allowlist",
+      "hint": "The SSRF guard blocks MCP servers on private/local IPs (loopback, LAN, cloud metadata). Hosts in this list are exempt — e.g. local MCP servers. Comma-separated.",
+      "label": "Allowed hosts"
     }
   },
   "about": {

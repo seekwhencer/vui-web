@@ -5,24 +5,84 @@ import {
   listMcpServers, addMcpServer, updateMcpServer,
   removeMcpServer, reconnectMcpServer, listMcpTools, getMcpCapability,
 } from '../api/mcp.js';
+import { getSettings, updateSettings } from '../api/settings.js';
 
 const EMPTY_FORM = { name: '', url: '', headers: '', enabled: true };
+
+/** Erlaubte Policy-Werte (serverseitig validiert). */
+export const POLICY_OPTIONS = ['read', 'write', 'execute', 'deny'];
+
+/**
+ * Namespaced Policy-Key, identisch zum Server (McpManager-Namespace):
+ * `${serverId}__${toolName}` (doppelter Unterstrich).
+ * @param {string} serverId
+ * @param {string} toolName
+ * @returns {string}
+ */
+export function policyKey(serverId, toolName) {
+  return `${serverId}__${toolName}`;
+}
+
+/**
+ * Zerlegt eine Komma-Liste in Hostnamen (trim, leere Einträge filtern).
+ * @param {string} input
+ * @returns {string[]}
+ */
+export function parseHosts(input) {
+  return String(input || '')
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean);
+}
 
 /**
  * MCP-Tab in der Settings-Seite.
  *
- * Eigene CRUD-UI (Add / Edit / Delete, Enable/Disable, Reconnect, Tool-Liste).
- * Änderungen wirken sofort (dedizierte /api/mcp/*-Endpunkte) — kein globaler
- * Save-Button. Nutzt die MCP-API direkt (api/mcp.js).
+ * CRUD-UI (Add / Edit / Delete, Enable/Disable, Reconnect) + Tool-Policies
+ * (deny-by-default) pro Tool + SSRF-Allowlist. Änderungen wirken sofort:
+ * Server-CRUD über die dedizierten /api/mcp/*-Endpunkte, Policies +
+ * SSRF-Allowlist über PUT /api/settings (security.toolPolicies /
+ * security.allowedHosts).
+ *
+ * Props (optional, für Tests — überspringen das Fetchen):
+ * - servers      → [{ id, name, ... }]
+ * - tools        → { [serverId]: [{ name, description? }] }
+ * - policies     → { [serverId__toolName]: 'read'|'write'|'execute'|'deny' }
+ * - allowedHosts → string[] (SSRF-Whitelist)
  */
-export default function McpSettings() {
+export default function McpSettings({
+  servers: serversProp,
+  tools: toolsProp,
+  policies: policiesProp,
+  allowedHosts: hostsProp,
+} = {}) {
   const { t } = useTranslation();
-  const [servers, setServers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [servers, setServers] = useState(serversProp ?? []);
+  const [loading, setLoading] = useState(serversProp === undefined);
   const [error, setError] = useState(null);
   const [form, setForm] = useState(null); // null = geschlossen, sonst { id?, ...EMPTY_FORM }
-  const [expandedTools, setExpandedTools] = useState({}); // id → tools[]
+  const [expandedTools, setExpandedTools] = useState(() => {
+    // Test-Props: alle Server vor-expandiert (Tools sofort sichtbar).
+    if (toolsProp && serversProp) {
+      const m = {};
+      for (const s of serversProp) m[s.id] = toolsProp[s.id] || [];
+      return m;
+    }
+    return {};
+  });
   const [toolSupport, setToolSupport] = useState(null); // null = unbekannt, true/false = erkannt
+
+  // Security-State: Tool-Policies (deny-by-default) + SSRF-Allowlist.
+  const [policies, setPolicies] = useState(() => ({ ...(policiesProp || {}) }));
+  const [hostsDraft, setHostsDraft] = useState(
+    () => (Array.isArray(hostsProp) ? hostsProp.join(', ') : '')
+  );
+  const [hostsCommitted, setHostsCommitted] = useState(
+    () => (Array.isArray(hostsProp) ? [...hostsProp] : null)
+  );
+  const [secLoading, setSecLoading] = useState(policiesProp === undefined);
+  const [secError, setSecError] = useState(null);
+  const [secSaved, setSecSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,7 +96,11 @@ export default function McpSettings() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (serversProp !== undefined) return undefined;
+    load();
+    return undefined;
+  }, [load, serversProp]);
 
   // Tool-Support des LLM-Backends (für Hinweis).
   useEffect(() => {
@@ -44,6 +108,31 @@ export default function McpSettings() {
       .then((cap) => setToolSupport(cap.toolSupport))
       .catch(() => setToolSupport(null));
   }, []);
+
+  // Security-Settings laden (Policies + SSRF-Allowlist), nur ohne Test-Props.
+  useEffect(() => {
+    if (policiesProp !== undefined) return undefined;
+    let cancelled = false;
+    getSettings()
+      .then((data) => {
+        if (cancelled) return;
+        setPolicies({ ...(data?.security?.toolPolicies || {}) });
+        const hosts = data?.security?.allowedHosts;
+        if (Array.isArray(hosts)) {
+          setHostsDraft(hosts.join(', '));
+          setHostsCommitted([...hosts]);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setSecError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSecLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [policiesProp]);
 
   const openAdd = () => setForm({ ...EMPTY_FORM });
   const openEdit = (s) => setForm({
@@ -110,6 +199,47 @@ export default function McpSettings() {
     } catch { /* Server nicht verbunden */ }
   };
 
+  // --- Security: sofort anwenden (PUT /api/settings) ---
+
+  /**
+   * Policy-Dropdown-Wechsel → optimistischer Update + sofortiger Save.
+   * Der Server ersetzt `security.toolPolicies` vollständig → komplette Map senden.
+   */
+  const handlePolicyChange = async (serverId, toolName, value) => {
+    const key = policyKey(serverId, toolName);
+    const prev = policies;
+    const next = { ...policies, [key]: value };
+    setPolicies(next);
+    setSecSaved(false);
+    setSecError(null);
+    try {
+      await updateSettings({ security: { toolPolicies: next } });
+      setSecSaved(true);
+    } catch (err) {
+      setPolicies(prev); // Rollback: Änderung hat nicht gewirkt
+      setSecError(err.message);
+    }
+  };
+
+  /** SSRF-Allowlist commit (on blur / Enter). Nur bei tatsächlicher Änderung. */
+  const commitHosts = async (value) => {
+    const next = parseHosts(value);
+    if (hostsCommitted && JSON.stringify(next) === JSON.stringify(hostsCommitted)) return;
+    const prevDraft = hostsDraft;
+    const prevCommitted = hostsCommitted;
+    setSecSaved(false);
+    setSecError(null);
+    try {
+      await updateSettings({ security: { allowedHosts: next } });
+      setHostsCommitted(next);
+      setSecSaved(true);
+    } catch (err) {
+      setHostsDraft(prevDraft); // Rollback
+      setHostsCommitted(prevCommitted);
+      setSecError(err.message);
+    }
+  };
+
   const statusClass = (status) =>
     status === 'connected' ? 'mcp__status--ok'
       : status === 'error' ? 'mcp__status--error'
@@ -125,8 +255,15 @@ export default function McpSettings() {
         </button>
       </div>
 
+      <p className="mcp__policy-hint">{t('mcp.policy.hint')}</p>
+
       {error && <p className="mcp__error">{error}</p>}
+      {secError && <p className="mcp__error" role="alert">{secError}</p>}
+      {secSaved && !secError && (
+        <p className="mcp__saved" role="status">{t('mcp.policy.saved')}</p>
+      )}
       {loading && <p className="mcp__loading">{t('mcp.loading')}</p>}
+      {secLoading && <p className="mcp__loading">{t('mcp.policy.loading')}</p>}
 
       {!loading && servers.length === 0 && (
         <p className="mcp__empty">{t('mcp.empty')}</p>
@@ -151,35 +288,81 @@ export default function McpSettings() {
 
             {expandedTools[s.id] && (
               <ul className="mcp__tools">
-                {expandedTools[s.id].map((tool) => (
-                  <li key={tool.name}>
-                    <code>{tool.name}</code>
-                    {tool.description && <span> — {tool.description}</span>}
-                  </li>
-                ))}
+                {expandedTools[s.id].map((tool) => {
+                  const key = policyKey(s.id, tool.name);
+                  const value = policies[key] ?? 'deny';
+                  const isDefault = policies[key] === undefined;
+                  return (
+                    <li key={tool.name} className="mcp__tool">
+                      <div className="mcp__tool-head">
+                        <code>{tool.name}</code>
+                        {isDefault && (
+                          <span className="mcp__policy-default">{t('mcp.policy.default')}</span>
+                        )}
+                      </div>
+                      {tool.description && (
+                        <span className="mcp__tool-desc">{tool.description}</span>
+                      )}
+                      <label className="mcp__policy">
+                        <span>{t('mcp.policy.label')}</span>
+                        <select
+                          value={value}
+                          onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
+                        >
+                          {POLICY_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {t(`mcp.policy.options.${opt}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
             <div className="mcp__item-actions">
-              <button type="button" className="btn btn--secondary" onClick={() => toggleTools(s.id)}>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => toggleTools(s.id)}>
                 <span>{t('mcp.showTools')}</span>
               </button>
-              <button type="button" className="btn btn--secondary" onClick={() => handleToggle(s)}>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
                 <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
               </button>
-              <button type="button" className="btn btn--secondary" onClick={() => handleReconnect(s.id)}>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleReconnect(s.id)}>
                 <RefreshCw size={16} /><span>{t('mcp.reconnect')}</span>
               </button>
-              <button type="button" className="btn btn--secondary" onClick={() => openEdit(s)}>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
                 <Pencil size={16} /><span>{t('mcp.edit')}</span>
               </button>
-              <button type="button" className="btn btn--stop" onClick={() => handleDelete(s.id)}>
+              <button type="button" className="btn btn--sm btn--stop" onClick={() => handleDelete(s.id)}>
                 <Trash2 size={16} /><span>{t('mcp.delete')}</span>
               </button>
             </div>
           </li>
         ))}
       </ul>
+
+      <section className="mcp__ssrf">
+        <h4>{t('mcp.ssrf.title')}</h4>
+        <p className="mcp__ssrf-hint">{t('mcp.ssrf.hint')}</p>
+        <label className="settings__field">
+          <span>{t('mcp.ssrf.label')}</span>
+          <input
+            type="text"
+            value={hostsDraft}
+            placeholder="sync.gitea.home, chrome.mcp.ai.home"
+            onChange={(e) => {
+              setSecSaved(false);
+              setHostsDraft(e.target.value);
+            }}
+            onBlur={(e) => commitHosts(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitHosts(e.target.value);
+            }}
+          />
+        </label>
+      </section>
 
       {form && (
         <form className="mcp__form" onSubmit={handleSubmit}>

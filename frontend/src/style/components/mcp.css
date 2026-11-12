@@ -117,15 +117,34 @@
   font-size: var(--fs-sm);
 }
 
+.mcp__tools li {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius);
+  border-bottom: 1px solid var(--color-surface);
+}
+
 .mcp__tools code {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
+  padding: var(--space-2) var(--space-2) 0 var(--space-2);
+  font-weight: 800;
+}
+
+.mcp__tools span {
+  padding: var(--space-2);
 }
 
 .mcp__item-actions {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.mcp__item-actions .btn--stop {
+  margin-left: auto;
+  margin-right: 0;
 }
 
 .mcp__form {
@@ -147,4 +166,94 @@
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
+}
+
+/* Tool-Policies (deny-by-default) + SSRF-Allowlist */
+.mcp__policy-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
+}
+
+.mcp__saved {
+  color: var(--color-success);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.mcp__tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mcp__tool-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mcp__policy-default {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  background: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+}
+
+.mcp__tool-desc {
+  padding: 0 var(--space-2);
+}
+
+.mcp__policy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  padding: 0 var(--space-2) var(--space-2) var(--space-2);
+}
+
+.mcp__policy > span {
+  color: var(--color-text-secondary);
+}
+
+.mcp__policy select {
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  background-color: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.mcp__policy select:focus {
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+  outline: none;
+}
+
+.mcp__ssrf {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mcp__ssrf h4 {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--color-text);
+}
+
+.mcp__ssrf-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
 }

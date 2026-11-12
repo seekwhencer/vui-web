@@ -14,6 +14,16 @@
   transition: background-color var(--transition), color var(--transition);
 }
 
+.btn--sm {
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-3);
+}
+
+.btn--xs {
+  font-size: var(--fs-xs);
+  padding: var(--space-1) var(--space-2);
+}
+
 .btn--primary {
   background-color: var(--color-primary);
   color: var(--color-surface);

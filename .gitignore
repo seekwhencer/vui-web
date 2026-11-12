@@ -10,6 +10,7 @@ frontend/dist/
 
 # Server
 server/config.json
+server/data/
 .env
 
 # Runtime data

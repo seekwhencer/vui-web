@@ -3,7 +3,9 @@ import express from 'express';
 import { FrontendRouter } from './FrontendRouter.js';
 import { TranscribeBridge } from '../Bridge/TranscribeBridge.js';
 import { Llm } from '../Llm.js';
-import { McpManager, MAX_MCP_TOOL_TURNS } from '../McpManager.js';
+import { McpManager } from '../McpManager.js';
+import { wrapUntrusted } from '../Security/Untrusted.js';
+import { getSecurityPrompt } from '../Security/SystemPrompt.js';
 
 /**
  * Main router class that aggregates all server routes.
@@ -13,12 +15,19 @@ class Router {
      * @param {Config} config - Configuration object
      * @param {import('node:http').Server} httpServer - HTTP server instance
      * @param {Logger} [logger] - Logger instance
+     * @param {{policy: PolicyEngine, approval: ApprovalService, audit: Audit, gateway: ExecutionGateway, store: ActionStore}} [security]
+     *   Zero-Trust-Dependencies. Wenn vorhanden, erzwingt der Tool-Loop die
+     *   Policy (deny / Approval / read via ExecutionGateway). Wenn nicht
+     *   vorhanden, bleibt das Legacy-Verhalten (direkte Tool-Ausführung) —
+     *   nur für Backward-Compatibility; die Produktion injiziert immer Security.
+     * @param {McpManager} [mcp] - Optionaler geteilter MCP-Manager (sonst intern erzeugt).
      */
-    constructor(config, httpServer, logger) {
+    constructor(config, httpServer, logger, security = null, mcp = null) {
         this.config = config;
         this.httpServer = httpServer;
         this.label = '[Router]';
         this.logger = logger || { log: () => {}, error: () => {} };
+        this.security = security;
 
         this.router = express.Router();
         this.router.use(express.json());
@@ -32,7 +41,17 @@ class Router {
 
         // MCP-Manager (Verbindungen + Tool-Registry + Tool-Ausführung).
         // Liest config.mcpServers dynamisch zur Aufrufzeit.
-        this.mcp = new McpManager({ config: this.config, logger: this.logger });
+        this.mcp = mcp || new McpManager({ config: this.config, logger: this.logger });
+    }
+
+    /**
+     * Liest das Tool-Turn-Limit aus der Config (Zero-Trust-Budget).
+     * Dynamisch zur Aufrufzeit, damit Runtime-Updates ohne Neustart wirken.
+     * @returns {number} max. Tool-Runden (Default 10)
+     */
+    maxToolTurns() {
+        const t = this.config?.security?.maxToolTurns;
+        return Number.isFinite(t) && t > 0 ? t : 10;
     }
 
     /**
@@ -150,7 +169,7 @@ class Router {
 
                 // Tool-Loop: LLM-Runden streamen, Tool-Calls ausführen,
                 // Ergebnis anhängen, bis keine Tool-Calls mehr oder Cap erreicht.
-                for (let turn = 0; turn < MAX_MCP_TOOL_TURNS; turn++) {
+                for (let turn = 0; turn < this.maxToolTurns(); turn++) {
                     let turnContent = '';
                     let turnToolCalls = [];
                     let turnReasoning = '';
@@ -205,9 +224,15 @@ class Router {
                         let content = 'Unbekanntes Tool';
                         let isError = true;
                         if (parsed) {
-                            const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
-                            content = result.content;
-                            isError = result.isError;
+                            if (this.security) {
+                                const result = await this.handleToolCall(parsed, args, { send, reason: turnContent });
+                                content = result.content;
+                                isError = result.isError;
+                            } else {
+                                const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                                content = result.content;
+                                isError = result.isError;
+                            }
                         }
 
                         send('tool_result', { id: call.id, content, isError });
@@ -360,6 +385,73 @@ class Router {
             } catch (err) { next(err); }
         });
 
+        // Approval-API (Zero-Trust, Phase 2): Freigaben verwalten + Audit lesen.
+        // Nur für den lokalen Menschen (UI) — das LLM erhält ausschließlich
+        // Tool-Ergebnisse und hat keinen Zugriff auf diese Endpunkte.
+        this.router.get('/api/actions/pending', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const actions = await this.security.store.listPending();
+                res.status(200).json({ success: true, data: actions });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
+        this.router.get('/api/actions/:id', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const action = await this.security.store.get(req.params.id);
+                if (action === null) {
+                    throw Router.approvalError('ACTION_NOT_FOUND', `Aktion ${req.params.id} nicht gefunden`);
+                }
+                res.status(200).json({ success: true, data: action });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
+        this.router.post('/api/actions/:id/approve', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const action = await this.security.approval.approve(req.params.id);
+                res.status(200).json({ success: true, data: action });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
+        this.router.post('/api/actions/:id/reject', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+                const action = await this.security.approval.reject(req.params.id, reason);
+                res.status(200).json({ success: true, data: action });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
+        this.router.post('/api/actions/:id/cancel', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const action = await this.security.approval.cancel(req.params.id);
+                res.status(200).json({ success: true, data: action });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
+        this.router.get('/api/audit', async (req, res) => {
+            if (!this.securityAvailable(res)) return;
+            try {
+                const entries = await this.security.audit.tail(Router.parseAuditLimit(req.query.limit));
+                res.status(200).json({ success: true, data: entries });
+            } catch (err) {
+                this.sendApprovalError(err, res);
+            }
+        });
+
         const frontendRouter = new FrontendRouter(this.config, this.httpServer, this.logger);
         await frontendRouter.init();
         this.router.use('/', frontendRouter.router);
@@ -384,8 +476,74 @@ class Router {
     }
 
     /**
+     * Mappt Approval-Fehler-Codes auf HTTP-Status.
+     * @type {Record<string, number>}
+     */
+    static APPROVAL_ERROR_STATUS = {
+        ACTION_NOT_FOUND: 404,
+        INVALID_ACTION_STATE: 409,
+        APPROVAL_EXPIRED: 410,
+        INTEGRITY_FAILURE: 500,
+        POLICY_DENIED: 403,
+    };
+
+    /**
+     * Erzeugt einen Fehler mit maschinenlesbarem Approval-Code.
+     * @param {string} code
+     * @param {string} message
+     * @returns {Error}
+     */
+    static approvalError(code, message) {
+        const err = new Error(message);
+        err.code = code;
+        return err;
+    }
+
+    /**
+     * Parst den ?limit-Parameter des Audit-Endpunkts (Default 50, max 500).
+     * @param {unknown} value
+     * @returns {number}
+     */
+    static parseAuditLimit(value) {
+        const n = Number.parseInt(value, 10);
+        if (!Number.isFinite(n) || n < 1) return 50;
+        return Math.min(n, 500);
+    }
+
+    /**
+     * Guard für die Approval-/Audit-Endpunkte: Security-Stack muss injiziert sein.
+     * @param {import('express').Response} res
+     * @returns {boolean} false, wenn bereits geantwortet wurde
+     */
+    securityAvailable(res) {
+        if (this.security) return true;
+        res.status(503).json({
+            success: false,
+            error: { code: 'SECURITY_DISABLED', message: 'Security-Stack ist nicht aktiviert' },
+        });
+        return false;
+    }
+
+    /**
+     * Antwortet auf Approval-Fehler mit dem gemappten HTTP-Status und
+     * { success: false, error: { code, message } }.
+     * @param {Error} err
+     * @param {import('express').Response} res
+     */
+    sendApprovalError(err, res) {
+        const status = Router.APPROVAL_ERROR_STATUS[err?.code] || 500;
+        if (status >= 500) {
+            this.logger.error(this.label, 'Approval-Endpunkt fehlgeschlagen', { code: err?.code, error: err?.message });
+        }
+        res.status(status).json({
+            success: false,
+            error: { code: err?.code || 'INTERNAL_ERROR', message: err?.message || 'Internal Server Error' },
+        });
+    }
+
+    /**
      * Baut die Chat-Nachrichten in der Reihenfolge:
-     * System-Prompt → History → aktuelle Frage.
+     * Security-Prompt → System-Prompt → History → aktuelle Frage.
      * @param {string} question - Die aktuelle Frage
      * @param {Array<{role: string, content: string}>} [history] - Optionale frühere Nachrichten
      * @returns {Array<{role: string, content: string}>}
@@ -393,9 +551,26 @@ class Router {
     buildChatMessages(question, history) {
         const messages = [];
 
+        // Security-Prompt (Zero-Trust, Phase 3) + LLM-System-Prompt werden zu
+        // EINER System-Message zusammengeführt. Viele Chat-Templates (z. B.
+        // Qwen3 via llama.cpp) erlauben nur genau eine System-Message an
+        // Position 0 und werfen sonst "System message must be at the
+        // beginning". Zwei separate System-Nachrichten brechen den Request.
+        //
+        // Der Security-Prompt ist KEINE Sicherheitsgrenze — die Grenze ist die
+        // Policy Engine + Approval Flow. Er reduziert nur die Chance, dass das
+        // LLM injizierte Anweisungen aus Tool-Ergebnissen befolgt.
+        const parts = [];
+        const securityPrompt = getSecurityPrompt(this.config);
+        if (securityPrompt && String(securityPrompt).trim() !== '') {
+            parts.push(String(securityPrompt).trim());
+        }
         const systemPrompt = this.config.llm?.systemPrompt;
-        if (systemPrompt) {
-            messages.push({ role: 'system', content: systemPrompt });
+        if (systemPrompt && String(systemPrompt).trim() !== '') {
+            parts.push(String(systemPrompt).trim());
+        }
+        if (parts.length > 0) {
+            messages.push({ role: 'system', content: parts.join('\n\n') });
         }
 
         if (Array.isArray(history)) {
@@ -408,6 +583,59 @@ class Router {
 
         messages.push({ role: 'user', content: question });
         return messages;
+    }
+
+    /**
+     * Führt einen Tool-Call gemäß der Zero-Trust-Policy aus.
+     *
+     * - deny        → DENIED (Audit POLICY_DENIED), LLM erhält Ablehnung.
+     * - write/exec  → AWAITING_APPROVAL (Aktion vorgeschlagen, NICHT ausgeführt).
+     *                 Optional wird ein `approval_required`-SSE-Event gesendet.
+     * - read        → direkt ausgeführt (ExecutionGateway: Timeout + Größenlimit),
+     *                 Ergebnis als Untrusted Data markiert.
+     *
+     * @param {{serverId: string, toolName: string}} parsed - Zerlegter Tool-Name
+     * @param {object} args - Tool-Argumente
+     * @param {{send?: Function, reason?: string}} [options]
+     *   send: SSE-Helper (für `approval_required`), reason: Kontext für die Freigabe
+     * @returns {Promise<{content: string, isError: boolean}>}
+     */
+    async handleToolCall(parsed, args, { send, reason } = {}) {
+        const policyResult = this.security.policy.evaluate(parsed.serverId, parsed.toolName, args);
+
+        if (!policyResult.allowed) {
+            await this.security.audit.log('POLICY_DENIED', { toolName: parsed.toolName, reason: policyResult.reason });
+            this.logger.log(this.label, 'Tool-Call abgelehnt (Policy)', {
+                tool: `${parsed.serverId}__${parsed.toolName}`, reason: policyResult.reason,
+            });
+            return { content: `DENIED: ${policyResult.reason}`, isError: true };
+        }
+
+        if (policyResult.requiresApproval) {
+            const action = await this.security.approval.propose({
+                serverId: parsed.serverId,
+                toolName: parsed.toolName,
+                args,
+                reason: reason || '',
+            });
+            if (send) {
+                send('approval_required', {
+                    actionId: action.id,
+                    toolName: parsed.toolName,
+                    arguments: args,
+                    reason: action.reason,
+                    expiresAt: action.expiresAt,
+                });
+            }
+            this.logger.log(this.label, 'Tool-Call wartet auf Freigabe', {
+                actionId: action.id, tool: `${parsed.serverId}__${parsed.toolName}`,
+            });
+            return { content: `AWAITING_APPROVAL: Aktion ${action.id} wartet auf Freigabe.`, isError: false };
+        }
+
+        // read: direkt ausführen (Timeout + Größenlimit) + Untrusted-Wrapping.
+        const result = await this.security.gateway.executeRead(parsed.serverId, parsed.toolName, args);
+        return { content: wrapUntrusted(result.content), isError: result.isError };
     }
 
     /**
@@ -426,7 +654,7 @@ class Router {
     async runChatWithMcpTools(question, history, options = {}) {
         const messages = this.buildChatMessages(question, history);
         const tools = this.mcp.toOpenAITools();
-        const maxTurns = MAX_MCP_TOOL_TURNS;
+        const maxTurns = this.maxToolTurns();
 
         // Kein Tool-Support im Backend → normaler Chat (Graceful Degradation).
         if (tools.length > 0) {
@@ -460,8 +688,13 @@ class Router {
                 if (parsed) {
                     let args = {};
                     try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
-                    const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
-                    content = result.content;
+                    if (this.security) {
+                        const result = await this.handleToolCall(parsed, args, { reason: turnResult.content });
+                        content = result.content;
+                    } else {
+                        const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                        content = result.content;
+                    }
                 }
                 messages.push({
                     role: 'tool',

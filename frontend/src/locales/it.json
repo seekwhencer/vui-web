@@ -62,6 +62,26 @@
       "max": "Max"
     }
   },
+  "approval": {
+    "title": "È richiesta l'approvazione dell'azione",
+    "tool": "Tool",
+    "reason": "Motivazione",
+    "expires": "Scade",
+    "expired": "Scaduta",
+    "parameters": "Parametri (lato server)",
+    "approve": "Approva",
+    "reject": "Rifiuta",
+    "close": "Chiudi",
+    "result": {
+      "approved": "Azione approvata: {{tool}}",
+      "rejected": "Azione rifiutata: {{tool}}",
+      "cancelled": "Azione annullata: {{tool}}",
+      "failed": "Azione non riuscita: {{tool}}",
+      "executing": "Azione in esecuzione: {{tool}}",
+      "completed": "Azione completata: {{tool}}",
+      "expired": "Azione scaduta: {{tool}}"
+    }
+  },
   "nav": {
     "transcription": "Trascrizione",
     "chat": "Chat",
@@ -152,6 +172,24 @@
       "url": "URL",
       "headers": "Header (KEY=VALUE per riga)",
       "enabled": "Attivato"
+    },
+    "policy": {
+      "label": "Policy",
+      "default": "deny (Predefinito)",
+      "hint": "I tool non impostati vengono negati di default (deny-by-default).",
+      "saved": "Salvato",
+      "loading": "Caricamento…",
+      "options": {
+        "read": "Lettura",
+        "write": "Scrittura",
+        "execute": "Esegui",
+        "deny": "Nega"
+      }
+    },
+    "ssrf": {
+      "title": "Whitelist SSRF",
+      "hint": "Il guard SSRF blocca i server MCP su IP private/locali (loopback, LAN, metadati cloud). Gli host in questa lista sono esentati — es. server MCP locali. Separati da virgola.",
+      "label": "Host consentiti"
     }
   },
   "about": {

@@ -1,0 +1,176 @@
+/* Approval-Dialog (Zero-Trust): Modal über dem Chat */
+.approval {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.approval__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.approval__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(560px, 100%);
+  max-height: min(80vh, 100%);
+  overflow-y: auto;
+  padding: var(--space-6);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.approval__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.approval__meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.approval__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.approval__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.approval__value {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  overflow-wrap: break-word;
+}
+
+.approval__tool {
+  font-family: var(--font-mono);
+}
+
+.approval__value--expired {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.approval__params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.approval__params-code {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.approval__error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-error);
+}
+
+.approval__result {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.approval__result--approved {
+  color: var(--color-success);
+}
+
+.approval__result--completed {
+  color: var(--color-success);
+}
+
+.approval__result--rejected {
+  color: var(--color-error);
+}
+
+.approval__result--failed {
+  color: var(--color-error);
+}
+
+.approval__result--cancelled,
+.approval__result--executing,
+.approval__result--expired {
+  color: var(--color-text-secondary);
+}
+
+.approval__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.approval__btn {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.approval__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.approval__btn--reject:hover:not(:disabled) {
+  color: var(--color-error);
+  border-color: var(--color-error);
+  background-color: color-mix(in srgb, var(--color-error) 8%, transparent);
+}
+
+.approval__btn--approve {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.approval__btn--approve:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.approval__btn--close:hover {
+  background-color: var(--color-surface-alt);
+}

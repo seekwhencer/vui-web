@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { TOOL_CLASSES } from './Security/PolicyEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +64,27 @@ const LLM_PARAMS = {
 };
 
 /**
+ * Security-Parameter (Zero-Trust, Phase 1).
+ *
+ * Jede Zeile:
+ *   env       – Umgebungsvariable, die den Wert überschreibt
+ *   type      – 'string' | 'integer' | 'object'
+ *   default   – Standardwert (wird in config.json geschrieben)
+ *
+ * Die Reihenfolge bestimmt die Reihenfolge in der UI.
+ */
+const SECURITY_PARAMS = {
+    maxToolTurns: { env: 'SECURITY_MAX_TOOL_TURNS', type: 'integer', default: 10, min: 1 },
+    maxToolResultBytes: { env: 'SECURITY_MAX_TOOL_RESULT_BYTES', type: 'integer', default: 65536, min: 1 },
+    toolTimeoutMs: { env: 'SECURITY_TOOL_TIMEOUT_MS', type: 'integer', default: 30000, min: 1 },
+    maxPendingActions: { env: 'SECURITY_MAX_PENDING_ACTIONS', type: 'integer', default: 20, min: 1 },
+    approvalTtlMs: { env: 'SECURITY_APPROVAL_TTL_MS', type: 'integer', default: 600000, min: 1 },
+    systemPrompt: { env: 'SECURITY_SYSTEM_PROMPT', type: 'string', default: '' },
+    toolPolicies: { env: 'SECURITY_TOOL_POLICIES', type: 'object', default: {} },
+    allowedHosts: { env: 'SECURITY_ALLOWED_HOSTS', type: 'array', default: [] },
+};
+
+/**
  * Loads and manages server configuration from environment variables and a config.json file.
  */
 class Config {
@@ -73,7 +95,7 @@ class Config {
     };
 
     /** Keys, die ohne Neustart wirksam werden (Bridge liest sie dynamisch). */
-    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort', 'mcpServers'];
+    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort', 'mcpServers', 'security'];
 
     /** Keys, die einen Neustart erfordern. */
     static restartKeys = ['serverPort'];
@@ -99,6 +121,9 @@ class Config {
 
         // LLM-Chat-Parameter: env > config.json > Default
         this.llm = this.resolveLlmParams(loaded);
+
+        // Security-Parameter (Zero-Trust): env > config.json > Default
+        this.security = this.resolveSecurityParams(loaded);
 
         // Badword-Liste (serverseitig aus dem Transkript gefiltert)
         this.badwords = this.resolveBadwords(loaded);
@@ -215,6 +240,24 @@ class Config {
     }
 
     /**
+     * Ermittelt die Security-Parameter: env > config.json > Default.
+     * @param {Record<string, unknown> | null} loaded
+     * @returns {Record<string, unknown>}
+     */
+    resolveSecurityParams(loaded) {
+        const params = {};
+        for (const [key, spec] of Object.entries(SECURITY_PARAMS)) {
+            const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            const fromFile = loaded?.security?.[key];
+            params[key] =
+                fromEnv !== undefined ? fromEnv
+                    : fromFile !== undefined ? fromFile
+                        : spec.default;
+        }
+        return params;
+    }
+
+    /**
      * Ermittelt die Badword-Liste: env > config.json > [].
      * @param {Record<string, unknown> | null} loaded
      * @returns {string[]}
@@ -251,6 +294,9 @@ class Config {
             llm: Object.fromEntries(
                 Object.entries(LLM_PARAMS).map(([key, spec]) => [key, spec.default])
             ),
+            security: Object.fromEntries(
+                Object.entries(SECURITY_PARAMS).map(([key, spec]) => [key, spec.default])
+            ),
             badwords: [],
             mcpServers: []
         };
@@ -270,7 +316,8 @@ class Config {
             whisper: { ...this.whisper },
             llm: { ...this.llm },
             badwords: [...this.badwords],
-            mcpServers: [...this.mcpServers]
+            mcpServers: [...this.mcpServers],
+            security: { ...this.security, toolPolicies: { ...(this.security.toolPolicies || {}) } }
         };
     }
 
@@ -309,6 +356,8 @@ class Config {
             errors.push('badwords muss ein Array aus Strings sein');
 
         errors.push(...this.validateMcpServers(s.mcpServers || []));
+
+        errors.push(...this.validateSecurityParams(s.security || {}));
 
         return errors;
     }
@@ -381,6 +430,56 @@ class Config {
     }
 
     /**
+     * Validiert den Security-Block.
+     * @param {Record<string, unknown>} s
+     * @returns {string[]} Fehlerliste (leer = gültig)
+     */
+    validateSecurityParams(s) {
+        const errors = [];
+        for (const [key, spec] of Object.entries(SECURITY_PARAMS)) {
+            const value = s[key];
+            const err = this.validateSecurityParam(key, spec, value);
+            if (err) errors.push(err);
+        }
+        return errors;
+    }
+
+    /**
+     * Validiert einen einzelnen Security-Parameter.
+     * @param {string} key
+     * @param {{type: string, min?: number}} spec
+     * @param {unknown} value
+     * @returns {string | null}
+     */
+    validateSecurityParam(key, spec, value) {
+        const label = `security.${key}`;
+        switch (spec.type) {
+            case 'string':
+                if (typeof value !== 'string') return `${label} muss ein String sein`;
+                break;
+            case 'integer': {
+                const min = spec.min ?? 1;
+                if (!Number.isInteger(value) || value < min) return `${label} muss eine Ganzzahl >= ${min} sein`;
+                break;
+            }
+            case 'object':
+                if (value === null || typeof value !== 'object' || Array.isArray(value))
+                    return `${label} muss ein Objekt sein`;
+                for (const [k, v] of Object.entries(value)) {
+                    if (!TOOL_CLASSES.includes(v)) return `${label}.${k} muss 'read', 'write', 'execute' oder 'deny' sein`;
+                }
+                break;
+            case 'array':
+                if (!Array.isArray(value)) return `${label} muss ein Array sein`;
+                for (const [i, v] of value.entries()) {
+                    if (typeof v !== 'string' || v.trim() === '') return `${label}[${i}] muss ein nicht-leerer String sein`;
+                }
+                break;
+        }
+        return null;
+    }
+
+    /**
      * Validiert eine MCP-Server-Liste. @returns {string[]} Fehlerliste
      */
     validateMcpServers(list) {
@@ -436,12 +535,13 @@ class Config {
     updateSettings(patch) {
         const current = this.getSettings();
 
-        // Deep-Merge für die verschachtelten Objekte (whisper, llm, vadParameters)
+        // Deep-Merge für die verschachtelten Objekte (whisper, llm, security, vadParameters)
         const next = {
             ...current,
             ...patch,
             whisper: { ...current.whisper, ...(patch.whisper || {}) },
             llm: { ...current.llm, ...(patch.llm || {}) },
+            security: { ...current.security, ...(patch.security || {}) },
             badwords: patch.badwords !== undefined ? patch.badwords : current.badwords,
             mcpServers: patch.mcpServers !== undefined ? patch.mcpServers : current.mcpServers
         };
@@ -461,6 +561,7 @@ class Config {
         this.whisperPort = next.whisperPort;
         this.whisper = { ...next.whisper };
         this.llm = { ...next.llm };
+        this.security = { ...next.security, toolPolicies: { ...(next.security.toolPolicies || {}) } };
         this.badwords = next.badwords.map((w) => String(w)).filter(Boolean);
         this.mcpServers = (next.mcpServers || []).map((s) => ({ ...s }));
 
@@ -486,6 +587,7 @@ class Config {
                     whisperPort: this.whisperPort,
                     whisper: this.whisper,
                     llm: this.llm,
+                    security: this.security,
                     badwords: this.badwords,
                     mcpServers: this.mcpServers
                 },
@@ -497,4 +599,4 @@ class Config {
     }
 }
 
-export { Config, WHISPER_PARAMS, LLM_PARAMS, VAD_PARAM_KEYS };
+export { Config, WHISPER_PARAMS, LLM_PARAMS, SECURITY_PARAMS, VAD_PARAM_KEYS };

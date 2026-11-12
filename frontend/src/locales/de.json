@@ -62,6 +62,26 @@
       "max": "Max"
     }
   },
+  "approval": {
+    "title": "Aktion muss freigegeben werden",
+    "tool": "Tool",
+    "reason": "Begründung",
+    "expires": "Läuft ab",
+    "expired": "Abgelaufen",
+    "parameters": "Parameter (serverseitig)",
+    "approve": "Genehmigen",
+    "reject": "Ablehnen",
+    "close": "Schließen",
+    "result": {
+      "approved": "Aktion genehmigt: {{tool}}",
+      "rejected": "Aktion abgelehnt: {{tool}}",
+      "cancelled": "Aktion abgebrochen: {{tool}}",
+      "failed": "Aktion fehlgeschlagen: {{tool}}",
+      "executing": "Aktion wird ausgeführt: {{tool}}",
+      "completed": "Aktion abgeschlossen: {{tool}}",
+      "expired": "Aktion abgelaufen: {{tool}}"
+    }
+  },
   "nav": {
     "transcription": "Transkription",
     "chat": "Chat",
@@ -152,6 +172,24 @@
       "url": "URL",
       "headers": "Header (KEY=VALUE pro Zeile)",
       "enabled": "Aktiviert"
+    },
+    "policy": {
+      "label": "Policy",
+      "default": "deny (Standard)",
+      "hint": "Nicht gesetzte Tools werden standardmäßig verweigert (deny-by-default).",
+      "saved": "Gespeichert",
+      "loading": "Lädt…",
+      "options": {
+        "read": "Lesen",
+        "write": "Schreiben",
+        "execute": "Ausführen",
+        "deny": "Verweigern"
+      }
+    },
+    "ssrf": {
+      "title": "SSRF-Whitelist",
+      "hint": "Der SSRF-Guard blockiert MCP-Server auf privaten/lokalen IPs (Loopback, LAN, Cloud-Metadaten). Hosts in dieser Liste sind ausgenommen — z. B. lokale MCP-Server. Komma-getrennt.",
+      "label": "Erlaubte Hosts"
     }
   },
   "about": {

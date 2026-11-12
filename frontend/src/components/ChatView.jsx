@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import ThinkBlock from './ThinkBlock';
 import MarkdownRenderer from './Markdown';
+import ApprovalDialog from './ApprovalDialog.jsx';
+import useChatStream from '../hooks/useChatStream.js';
 
 function errorMessage(t, error) {
   if (error && (error.name === 'NetworkError' || error.status === 0)) {
@@ -35,6 +37,11 @@ export default function ChatView({ items, thinking, answer, error, conversationI
   const listRef = useRef(null);
   const prevCountRef = useRef(0);
 
+  // Zero-Trust: offene Freigabe-Aktionen aus dem (modulebenen) Store —
+  // sie überleben Seitenwechsel. Der Dialog zeigt die erste offene Aktion.
+  const { pendingApprovals, clearPendingApproval } = useChatStream();
+  const pendingApproval = pendingApprovals[0] || null;
+
   const turns = items || [];
 
   // Konversations-Wechsel: ans Ende springen (neueste Nachricht).
@@ -63,59 +70,69 @@ export default function ChatView({ items, thinking, answer, error, conversationI
 
   if (turns.length === 0) {
     return (
-      <section className="chat-view chat-view__empty" aria-live="polite">
-        <p className="chat-view__empty-text">{t('chat.empty')}</p>
-      </section>
+      <>
+        <section className="chat-view chat-view__empty" aria-live="polite">
+          <p className="chat-view__empty-text">{t('chat.empty')}</p>
+        </section>
+        {pendingApproval && (
+          <ApprovalDialog action={pendingApproval} onClose={clearPendingApproval} />
+        )}
+      </>
     );
   }
 
   return (
-    <section ref={listRef} className="chat-view" aria-live="polite">
-      {turns.map((item) => {
-        const isLive = Boolean(item.pending);
-        const itemThinking = isLive ? thinking : item.thinking || '';
-        const itemAnswer = isLive ? answer : item.answer || '';
-        const itemError = isLive
-          ? (error ? errorMessage(t, error) : null)
-          : (item.error || null);
+    <>
+      <section ref={listRef} className="chat-view" aria-live="polite">
+        {turns.map((item) => {
+          const isLive = Boolean(item.pending);
+          const itemThinking = isLive ? thinking : item.thinking || '';
+          const itemAnswer = isLive ? answer : item.answer || '';
+          const itemError = isLive
+            ? (error ? errorMessage(t, error) : null)
+            : (item.error || null);
 
-        return (
-          <div className="turn" key={item.id} data-turn-id={item.id}>
-            <div className="msg msg--user">
-              <div className="msg__bubble">{item.question}</div>
-            </div>
+          return (
+            <div className="turn" key={item.id} data-turn-id={item.id}>
+              <div className="msg msg--user">
+                <div className="msg__bubble">{item.question}</div>
+              </div>
 
-            <div className="msg msg--assistant">
-              {itemThinking && <ThinkBlock content={itemThinking} />}
-              {itemError ? (
-                <p className="chat-view__error-text">{itemError}</p>
-              ) : itemAnswer ? (
-                <>
-                  <div className="msg__bubble">
-                    <MarkdownRenderer text={itemAnswer} />
-                  </div>
-                  {item.tokens != null && (
-                    <div
-                      className="turn__meta"
-                      title={`${t('chat.tokensPrompt')}: ${item.tokens.prompt} · ${t('chat.tokensCompletion')}: ${item.tokens.completion}`}
-                    >
-                      <span className="turn__model" title={item.model}>{modelLabel(item.model)}</span>
-                      <span className="turn__tokens">
-                        {item.tokens.total} {t('chat.tokens')}
-                      </span>
+              <div className="msg msg--assistant">
+                {itemThinking && <ThinkBlock content={itemThinking} />}
+                {itemError ? (
+                  <p className="chat-view__error-text">{itemError}</p>
+                ) : itemAnswer ? (
+                  <>
+                    <div className="msg__bubble">
+                      <MarkdownRenderer text={itemAnswer} />
                     </div>
-                  )}
-                </>
-              ) : isLive && !itemThinking ? (
-                <div className="chat-view__loading-flex">
-                  <span className="spinner" role="status" aria-hidden="true" />
-                  <p className="chat-view__loading-text">{t('chat.loading')}</p>
-                </div>
-              ) : null}
+                    {item.tokens != null && (
+                      <div
+                        className="turn__meta"
+                        title={`${t('chat.tokensPrompt')}: ${item.tokens.prompt} · ${t('chat.tokensCompletion')}: ${item.tokens.completion}`}
+                      >
+                        <span className="turn__model" title={item.model}>{modelLabel(item.model)}</span>
+                        <span className="turn__tokens">
+                          {item.tokens.total} {t('chat.tokens')}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : isLive && !itemThinking ? (
+                  <div className="chat-view__loading-flex">
+                    <span className="spinner" role="status" aria-hidden="true" />
+                    <p className="chat-view__loading-text">{t('chat.loading')}</p>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </section>
+          );
+        })}
+      </section>
+      {pendingApproval && (
+        <ApprovalDialog action={pendingApproval} onClose={clearPendingApproval} />
+      )}
+    </>
   );
 }

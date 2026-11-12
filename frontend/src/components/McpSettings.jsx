@@ -249,7 +249,12 @@ export default function McpSettings({
   return (
     <div className="mcp">
       <div className="mcp__header">
-        <h3>{t('mcp.title')}</h3>
+        <div className="mcp__header-title">
+          <h3>{t('mcp.title')}</h3>
+          {secSaved && !secError && (
+            <p className="mcp__saved" role="status">{t('mcp.policy.saved')}</p>
+          )}
+        </div>
         <button type="button" className="btn btn--primary" onClick={openAdd}>
           <Plus size={16} /><span>{t('mcp.add')}</span>
         </button>
@@ -259,9 +264,6 @@ export default function McpSettings({
 
       {error && <p className="mcp__error">{error}</p>}
       {secError && <p className="mcp__error" role="alert">{secError}</p>}
-      {secSaved && !secError && (
-        <p className="mcp__saved" role="status">{t('mcp.policy.saved')}</p>
-      )}
       {loading && <p className="mcp__loading">{t('mcp.loading')}</p>}
       {secLoading && <p className="mcp__loading">{t('mcp.policy.loading')}</p>}
 
@@ -296,26 +298,23 @@ export default function McpSettings({
                     <li key={tool.name} className="mcp__tool">
                       <div className="mcp__tool-head">
                         <code>{tool.name}</code>
-                        {isDefault && (
-                          <span className="mcp__policy-default">{t('mcp.policy.default')}</span>
-                        )}
+                        <label className="mcp__policy">
+                          <span>{t('mcp.policy.label')}</span>
+                          <select
+                            value={value}
+                            onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
+                          >
+                            {POLICY_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {t(`mcp.policy.options.${opt}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                       {tool.description && (
                         <span className="mcp__tool-desc">{tool.description}</span>
                       )}
-                      <label className="mcp__policy">
-                        <span>{t('mcp.policy.label')}</span>
-                        <select
-                          value={value}
-                          onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
-                        >
-                          {POLICY_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {t(`mcp.policy.options.${opt}`)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                     </li>
                   );
                 })}

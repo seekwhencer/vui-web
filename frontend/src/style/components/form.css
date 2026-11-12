@@ -63,6 +63,7 @@
 
 /* ===== Inputs ===== */
 .settings__field input[type='text'],
+.settings__field input[type='url'],
 .settings__field input[type='number'] {
   font-family: inherit;
   font-size: var(--fs-sm);

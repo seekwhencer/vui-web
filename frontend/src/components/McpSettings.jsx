@@ -275,6 +275,27 @@ export default function McpSettings({
         <p className="mcp__warning">{t('mcp.noToolSupport')}</p>
       )}
 
+      <section className="mcp__ssrf">
+        <h4>{t('mcp.ssrf.title')}</h4>
+        <p className="mcp__ssrf-hint">{t('mcp.ssrf.hint')}</p>
+        <label className="settings__field">
+          <span>{t('mcp.ssrf.label')}</span>
+          <input
+            type="text"
+            value={hostsDraft}
+            placeholder="host-one, host-two"
+            onChange={(e) => {
+              setSecSaved(false);
+              setHostsDraft(e.target.value);
+            }}
+            onBlur={(e) => commitHosts(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitHosts(e.target.value);
+            }}
+          />
+        </label>
+      </section>
+
       <ul className="mcp__list">
         {servers.map((s) => (
           <li key={s.id} className="mcp__item">
@@ -286,6 +307,25 @@ export default function McpSettings({
               <code className="mcp__cmd">{s.url}</code>
               <span className="mcp__tools-count">{s.toolCount} {t('mcp.tools')}</span>
             </div>
+
+            <div className="mcp__item-actions">
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => toggleTools(s.id)}>
+                <span>{t('mcp.showTools')}</span>
+              </button>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
+                <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
+              </button>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleReconnect(s.id)}>
+                <RefreshCw size={16} /><span>{t('mcp.reconnect')}</span>
+              </button>
+              <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
+                <Pencil size={16} /><span>{t('mcp.edit')}</span>
+              </button>
+              <button type="button" className="btn btn--sm btn--stop" onClick={() => handleDelete(s.id)}>
+                <Trash2 size={16} /><span>{t('mcp.delete')}</span>
+              </button>
+            </div>
+
             {s.error && <p className="mcp__item-error">{s.error}</p>}
 
             {expandedTools[s.id] && (
@@ -321,47 +361,11 @@ export default function McpSettings({
               </ul>
             )}
 
-            <div className="mcp__item-actions">
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => toggleTools(s.id)}>
-                <span>{t('mcp.showTools')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
-                <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleReconnect(s.id)}>
-                <RefreshCw size={16} /><span>{t('mcp.reconnect')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
-                <Pencil size={16} /><span>{t('mcp.edit')}</span>
-              </button>
-              <button type="button" className="btn btn--sm btn--stop" onClick={() => handleDelete(s.id)}>
-                <Trash2 size={16} /><span>{t('mcp.delete')}</span>
-              </button>
-            </div>
           </li>
         ))}
       </ul>
 
-      <section className="mcp__ssrf">
-        <h4>{t('mcp.ssrf.title')}</h4>
-        <p className="mcp__ssrf-hint">{t('mcp.ssrf.hint')}</p>
-        <label className="settings__field">
-          <span>{t('mcp.ssrf.label')}</span>
-          <input
-            type="text"
-            value={hostsDraft}
-            placeholder="sync.gitea.home, chrome.mcp.ai.home"
-            onChange={(e) => {
-              setSecSaved(false);
-              setHostsDraft(e.target.value);
-            }}
-            onBlur={(e) => commitHosts(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitHosts(e.target.value);
-            }}
-          />
-        </label>
-      </section>
+
 
       {form && (
         <form className="mcp__form" onSubmit={handleSubmit}>

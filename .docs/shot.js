@@ -65,7 +65,7 @@ async function shot(page, file) {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const launchOptions = { headless: true, args: ['--no-sandbox'] };
+  const launchOptions = { headless: true, args: ['--no-sandbox', '--disable-cache'] };
   if (process.env.SHOT_CHROME_PATH) launchOptions.executablePath = process.env.SHOT_CHROME_PATH;
   const browser = await chromium.launch(launchOptions);
 

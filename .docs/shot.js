@@ -2,11 +2,29 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 
-const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
-const OUT = process.env.OUT_DIR || './screenshots';
+function loadEnv(file) {
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
+
+const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+loadEnv(path.join(scriptDir, '.env.default'));
+loadEnv(path.join(scriptDir, '.env'));
+
+const BASE = (process.env.SHOT_BASE_URL || '').replace(/\/+$/, '');
+const OUT = process.env.SHOT_OUT_DIR || './screenshots';
 const VIEWPORT = { width: 1300, height: 1000 };
 const ZOOM = '1.25'; // "zoom in twice": 100% -> 110% -> 125%
-const THEMES = (process.env.THEMES || 'light,dark').split(',').map((s) => s.trim()).filter(Boolean);
+const THEMES = (process.env.SHOT_THEMES || 'light,dark').split(',').map((s) => s.trim()).filter(Boolean);
 
 const log = (...a) => console.log('[shot]', ...a);
 
@@ -48,7 +66,7 @@ async function shot(page, file) {
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const launchOptions = { headless: true, args: ['--no-sandbox'] };
-  if (process.env.CHROME_PATH) launchOptions.executablePath = process.env.CHROME_PATH;
+  if (process.env.SHOT_CHROME_PATH) launchOptions.executablePath = process.env.SHOT_CHROME_PATH;
   const browser = await chromium.launch(launchOptions);
 
   for (const theme of THEMES) {

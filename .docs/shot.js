@@ -137,6 +137,34 @@ async function shot(page, file) {
       const label = (await settingsTab.nth(i).innerText())
         .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       await shot(page, path.join(OUT, `settings-${label}-${theme}.png`));
+
+      if (label === 'mcp') {
+        const firstItem = page.locator('.mcp__item').first();
+        if ((await page.locator('.mcp__item').count()) === 0) {
+          log('WARN: no MCP servers configured, skipping mcp-tools screenshots');
+        } else {
+          // Expand the tools of the first MCP server.
+          await firstItem.locator('button[aria-expanded]').first().click();
+          await firstItem.locator('.mcp__tool-filter').waitFor({ timeout: 15000 });
+          await page.waitForTimeout(400);
+          await shot(page, path.join(OUT, `settings-mcp-tools-${theme}.png`));
+
+          // Apply the "deny" policy filter (4th button: read, write, execute, deny).
+          const denyBtn = firstItem.locator('.mcp__tool-filter-policies .btn').nth(3);
+          await denyBtn.click();
+          await page.waitForFunction(
+            () => {
+              const item = document.querySelector('.mcp__item');
+              const btns = item?.querySelectorAll('.mcp__tool-filter-policies .btn') || [];
+              return btns[3]?.getAttribute('aria-pressed') === 'true';
+            },
+            null,
+            { timeout: 15000 }
+          );
+          await page.waitForTimeout(400);
+          await shot(page, path.join(OUT, `settings-mcp-tools-deny-${theme}.png`));
+        }
+      }
     }
 
     await context.close();

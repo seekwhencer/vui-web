@@ -151,6 +151,7 @@
     "edit": "Modifica",
     "delete": "Elimina",
     "save": "Salva",
+    "cancel": "Annulla",
     "enable": "Attiva",
     "disable": "Disattiva",
     "reconnect": "Riconnetti",
@@ -185,6 +186,12 @@
         "execute": "Esegui",
         "deny": "Nega"
       }
+    },
+    "filter": {
+      "title": "Filtro strumenti",
+      "keyword": "Parola chiave…",
+      "reset": "Reimposta filtri",
+      "empty": "Nessuno strumento corrisponde al filtro."
     },
     "ssrf": {
       "title": "Whitelist SSRF",

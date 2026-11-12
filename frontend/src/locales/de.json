@@ -151,6 +151,7 @@
     "edit": "Bearbeiten",
     "delete": "Löschen",
     "save": "Speichern",
+    "cancel": "Abbrechen",
     "enable": "Aktivieren",
     "disable": "Deaktivieren",
     "reconnect": "Neu verbinden",
@@ -185,6 +186,12 @@
         "execute": "Ausführen",
         "deny": "Verweigern"
       }
+    },
+    "filter": {
+      "title": "Tool-Filter",
+      "keyword": "Stichwort…",
+      "reset": "Filter zurücksetzen",
+      "empty": "Keine Tools entsprechen dem Filter."
     },
     "ssrf": {
       "title": "SSRF-Whitelist",

@@ -151,6 +151,7 @@
     "edit": "Edit",
     "delete": "Delete",
     "save": "Save",
+    "cancel": "Cancel",
     "enable": "Enable",
     "disable": "Disable",
     "reconnect": "Reconnect",
@@ -185,6 +186,12 @@
         "execute": "Execute",
         "deny": "Deny"
       }
+    },
+    "filter": {
+      "title": "Tool filter",
+      "keyword": "Keyword…",
+      "reset": "Reset filter",
+      "empty": "No tools match the filter."
     },
     "ssrf": {
       "title": "SSRF Allowlist",

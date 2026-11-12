@@ -4,7 +4,7 @@
 // frontend/src/style/variables.css synchron bleiben (dort die Vorlage).
 // RADIUS_BASE_PX muss mit dem Basiswert von --radius dort synchron bleiben.
 
-const RADIUS_BASE_FACTOR = 0.7;
+const RADIUS_BASE_FACTOR = 0.2;
 const RADIUS_BASE_PX = 10; // --radius: calc(10px * var(--radius-factor))
 
 // Initialwert für den Roundness-Slider (Faktor aus der Basis-Vorlage).

@@ -61,11 +61,22 @@
   color: var(--color-text);
 }
 
+.btn--secondary.is-active {
+  background-color: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ===== Inputs ===== */
 .settings__field input[type='text'],
 .settings__field input[type='url'],
 .settings__field input[type='number'] {
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   color: var(--color-text);
   background-color: var(--color-surface-alt);

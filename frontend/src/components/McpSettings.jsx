@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Pencil, Trash2, RefreshCw, Power } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, Power, ToolCase } from 'lucide-react';
 import {
   listMcpServers, addMcpServer, updateMcpServer,
   removeMcpServer, reconnectMcpServer, listMcpTools, getMcpCapability,
@@ -36,6 +36,29 @@ export function parseHosts(input) {
 }
 
 /**
+ * Prüft, ob ein Tool den aktiven Tool-Filter erfüllt (Policy + Stichwort).
+ * Policy-Vergleich nutzt die effektive Policy (nicht gesetzt → 'deny').
+ * Stichwort matcht case-insensitiv auf Name + Beschreibung.
+ * @param {{ name: string, description?: string }} tool
+ * @param {string} serverId
+ * @param {Object<string,string>} policies
+ * @param {{ policy: string|null, keyword: string }} filter
+ * @returns {boolean}
+ */
+export function matchesToolFilter(tool, serverId, policies, filter) {
+  if (filter.policy) {
+    const effective = policies[policyKey(serverId, tool.name)] ?? 'deny';
+    if (effective !== filter.policy) return false;
+  }
+  const kw = String(filter.keyword || '').trim().toLowerCase();
+  if (kw) {
+    const haystack = `${tool.name} ${tool.description || ''}`.toLowerCase();
+    if (!haystack.includes(kw)) return false;
+  }
+  return true;
+}
+
+/**
  * MCP-Tab in der Settings-Seite.
  *
  * CRUD-UI (Add / Edit / Delete, Enable/Disable, Reconnect) + Tool-Policies
@@ -60,7 +83,10 @@ export default function McpSettings({
   const [servers, setServers] = useState(serversProp ?? []);
   const [loading, setLoading] = useState(serversProp === undefined);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState(null); // null = geschlossen, sonst { id?, ...EMPTY_FORM }
+  // Edit-Formular pro Server (inline im Item, an der Stelle von mcp__item-head).
+  const [editing, setEditing] = useState({}); // { [serverId]: { name, url, headers, enabled } }
+  // Add-Formular (einmalig, für neue Server).
+  const [addForm, setAddForm] = useState(null); // null = geschlossen, sonst { ...EMPTY_FORM }
   const [expandedTools, setExpandedTools] = useState(() => {
     // Test-Props: alle Server vor-expandiert (Tools sofort sichtbar).
     if (toolsProp && serversProp) {
@@ -71,6 +97,9 @@ export default function McpSettings({
     return {};
   });
   const [toolSupport, setToolSupport] = useState(null); // null = unbekannt, true/false = erkannt
+
+  // Tool-Filter pro Server (unabhängig): { [serverId]: { policy, keyword } }.
+  const [toolFilters, setToolFilters] = useState({});
 
   // Security-State: Tool-Policies (deny-by-default) + SSRF-Allowlist.
   const [policies, setPolicies] = useState(() => ({ ...(policiesProp || {}) }));
@@ -134,26 +163,57 @@ export default function McpSettings({
     };
   }, [policiesProp]);
 
-  const openAdd = () => setForm({ ...EMPTY_FORM });
-  const openEdit = (s) => setForm({
-    id: s.id, name: s.name, url: s.url,
-    headers: headersToLines(s.headers), enabled: s.enabled,
-  });
-  const closeForm = () => setForm(null);
+  const openAdd = () => setAddForm({ ...EMPTY_FORM });
+  const closeAdd = () => setAddForm(null);
 
-  const handleSubmit = async (e) => {
+  const openEdit = (s) => setEditing((m) => ({
+    ...m,
+    [s.id]: {
+      name: s.name, url: s.url,
+      headers: headersToLines(s.headers), enabled: s.enabled,
+    },
+  }));
+  const closeEdit = (id) => setEditing((m) => {
+    const next = { ...m };
+    delete next[id];
+    return next;
+  });
+  const setEditField = (id, patch) => setEditing((m) => ({
+    ...m,
+    [id]: { ...m[id], ...patch },
+  }));
+
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     const entry = {
-      name: form.name.trim(),
-      url: form.url.trim(),
-      headers: linesToHeaders(form.headers),
-      enabled: form.enabled,
+      name: addForm.name.trim(),
+      url: addForm.url.trim(),
+      headers: linesToHeaders(addForm.headers),
+      enabled: addForm.enabled,
     };
     setError(null);
     try {
-      if (form.id) await updateMcpServer(form.id, entry);
-      else await addMcpServer(entry);
-      closeForm();
+      await addMcpServer(entry);
+      closeAdd();
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleEditSubmit = async (e, id) => {
+    e.preventDefault();
+    const f = editing[id];
+    const entry = {
+      name: f.name.trim(),
+      url: f.url.trim(),
+      headers: linesToHeaders(f.headers),
+      enabled: f.enabled,
+    };
+    setError(null);
+    try {
+      await updateMcpServer(id, entry);
+      closeEdit(id);
       await load();
     } catch (err) {
       setError(err.message);
@@ -198,6 +258,40 @@ export default function McpSettings({
       setExpandedTools((m) => ({ ...m, [id]: tools }));
     } catch { /* Server nicht verbunden */ }
   };
+
+  // --- Tool-Filter (Policy + Stichwort), pro Server unabhängig ---
+
+  const getToolFilter = (serverId) =>
+    toolFilters[serverId] ?? { policy: null, keyword: '' };
+
+  const setToolFilterFor = (serverId, patch) =>
+    setToolFilters((m) => ({
+      ...m,
+      [serverId]: { ...getToolFilter(serverId), ...patch },
+    }));
+
+  /** Policy-Button: erneut klicken schaltet den Filter ab. */
+  const togglePolicyFilter = (serverId, opt) => {
+    const current = getToolFilter(serverId).policy;
+    setToolFilterFor(serverId, { policy: current === opt ? null : opt });
+  };
+
+  const setKeywordFilter = (serverId, keyword) =>
+    setToolFilterFor(serverId, { keyword });
+
+  const resetToolFilter = (serverId) =>
+    setToolFilterFor(serverId, { policy: null, keyword: '' });
+
+  const toolFilterActive = (serverId) => {
+    const f = getToolFilter(serverId);
+    return f.policy !== null || f.keyword.trim() !== '';
+  };
+
+  /** Sichtbare Tools eines Servers nach dessen Filter. */
+  const visibleTools = (serverId) =>
+    (expandedTools[serverId] || []).filter((tool) =>
+      matchesToolFilter(tool, serverId, policies, getToolFilter(serverId))
+    );
 
   // --- Security: sofort anwenden (PUT /api/settings) ---
 
@@ -298,7 +392,61 @@ export default function McpSettings({
 
       <ul className="mcp__list">
         {servers.map((s) => (
-          <li key={s.id} className="mcp__item">
+          <li key={s.id} className={`mcp__item ${s.status === 'connected' ? 'is-connected' : 'is-disconnected'}`}>
+            {editing[s.id] ? (
+              <form className="mcp__form mcp__form--inline" onSubmit={(e) => handleEditSubmit(e, s.id)}>
+                <h4>{t('mcp.editTitle')}</h4>
+                <label className="settings__field">
+                  <span>{t('mcp.fields.name')}</span>
+                  <input
+                    type="text"
+                    value={editing[s.id].name}
+                    required
+                    onChange={(e) => setEditField(s.id, { name: e.target.value })}
+                  />
+                </label>
+                <label className="settings__field">
+                  <span>{t('mcp.fields.url')}</span>
+                  <input
+                    type="url"
+                    value={editing[s.id].url}
+                    required
+                    placeholder="http://localhost:8080/mcp"
+                    onChange={(e) => setEditField(s.id, { url: e.target.value })}
+                  />
+                </label>
+                <label className="settings__field settings__field--full">
+                  <span>{t('mcp.fields.headers')}</span>
+                  <textarea
+                    className="settings__textarea"
+                    rows={3}
+                    value={editing[s.id].headers}
+                    placeholder={'Authorization=Bearer ...\nX-Custom=value'}
+                    onChange={(e) => setEditField(s.id, { headers: e.target.value })}
+                  />
+                </label>
+                <label className="settings__field settings__field--check">
+                  <input
+                    type="checkbox"
+                    checked={editing[s.id].enabled}
+                    onChange={(e) => setEditField(s.id, { enabled: e.target.checked })}
+                  />
+                  <span>{t('mcp.fields.enabled')}</span>
+                </label>
+                <div className="mcp__form-actions">
+                  <button type="button" className="btn btn--secondary" onClick={() => openEdit(s)}>
+                    <span>{t('settings.reset')}</span>
+                  </button>
+                  <button type="button" className="btn btn--secondary" onClick={() => closeEdit(s.id)}>
+                    <span>{t('mcp.cancel')}</span>
+                  </button>
+                  <button type="submit" className="btn btn--primary">
+                    <span>{t('mcp.save')}</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
             <div className="mcp__item-head">
               <span className={`mcp__status ${statusClass(s.status)}`}>
                 {t(`mcp.status.${s.status}`)}
@@ -309,8 +457,13 @@ export default function McpSettings({
             </div>
 
             <div className="mcp__item-actions">
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => toggleTools(s.id)}>
-                <span>{t('mcp.showTools')}</span>
+              <button
+                type="button"
+                className={`btn btn--xs btn--secondary ${expandedTools[s.id] ? 'is-active' : ''}`}
+                aria-expanded={Boolean(expandedTools[s.id])}
+                onClick={() => toggleTools(s.id)}
+              >
+                <ToolCase size={16} /><span>{t('mcp.showTools')}</span>
               </button>
               <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
                 <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
@@ -321,7 +474,7 @@ export default function McpSettings({
               <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
                 <Pencil size={16} /><span>{t('mcp.edit')}</span>
               </button>
-              <button type="button" className="btn btn--sm btn--stop" onClick={() => handleDelete(s.id)}>
+              <button type="button" className="btn btn--xs btn--stop" onClick={() => handleDelete(s.id)}>
                 <Trash2 size={16} /><span>{t('mcp.delete')}</span>
               </button>
             </div>
@@ -329,64 +482,111 @@ export default function McpSettings({
             {s.error && <p className="mcp__item-error">{s.error}</p>}
 
             {expandedTools[s.id] && (
-              <ul className="mcp__tools">
-                {expandedTools[s.id].map((tool) => {
-                  const key = policyKey(s.id, tool.name);
-                  const value = policies[key] ?? 'deny';
-                  const isDefault = policies[key] === undefined;
-                  return (
-                    <li key={tool.name} className="mcp__tool">
-                      <div className="mcp__tool-head">
-                        <code>{tool.name}</code>
-                        <label className="mcp__policy">
-                          <span>{t('mcp.policy.label')}</span>
-                          <select
-                            value={value}
-                            onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
-                          >
-                            {POLICY_OPTIONS.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {t(`mcp.policy.options.${opt}`)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                      {tool.description && (
-                        <span className="mcp__tool-desc">{tool.description}</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+              <>
+                <div className="mcp__tool-filter">
+                  <div
+                    className="mcp__tool-filter-policies"
+                    role="group"
+                    aria-label={t('mcp.filter.title')}
+                  >
+                    {POLICY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`btn btn--xs ${getToolFilter(s.id).policy === opt ? 'btn--primary' : 'btn--secondary'}`}
+                        aria-pressed={getToolFilter(s.id).policy === opt}
+                        onClick={() => togglePolicyFilter(s.id, opt)}
+                      >
+                        <span>{t(`mcp.policy.options.${opt}`)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    className="mcp__tool-filter-input"
+                    placeholder={t('mcp.filter.keyword')}
+                    value={getToolFilter(s.id).keyword}
+                    onChange={(e) => setKeywordFilter(s.id, e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--xs btn--secondary"
+                    onClick={() => resetToolFilter(s.id)}
+                    disabled={!toolFilterActive(s.id)}
+                  >
+                    <span>{t('mcp.filter.reset')}</span>
+                  </button>
+                </div>
 
+                {visibleTools(s.id).length > 0 ? (
+                  <ul className="mcp__tools">
+                    {visibleTools(s.id).map((tool) => {
+                      const key = policyKey(s.id, tool.name);
+                      const value = policies[key] ?? 'deny';
+                      const isDefault = policies[key] === undefined;
+                      return (
+                        <li key={tool.name} className="mcp__tool">
+                          <div className="mcp__tool-head">
+                            <code>{tool.name}</code>
+                            {isDefault && (
+                              <span className="mcp__policy-default">
+                                {t('mcp.policy.default')}
+                              </span>
+                            )}
+                            <label className="mcp__policy">
+                              <span>{t('mcp.policy.label')}</span>
+                              <select
+                                value={value}
+                                onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
+                              >
+                                {POLICY_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {t(`mcp.policy.options.${opt}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          {tool.description && (
+                            <span className="mcp__tool-desc">{tool.description}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="mcp__filter-empty">{t('mcp.filter.empty')}</p>
+                )}
+              </>
+            )}
+              </>
+            )}
           </li>
         ))}
       </ul>
 
 
 
-      {form && (
-        <form className="mcp__form" onSubmit={handleSubmit}>
-          <h4>{form.id ? t('mcp.editTitle') : t('mcp.addTitle')}</h4>
+      {addForm && (
+        <form className="mcp__form" onSubmit={handleAddSubmit}>
+          <h4>{t('mcp.addTitle')}</h4>
           <label className="settings__field">
             <span>{t('mcp.fields.name')}</span>
             <input
               type="text"
-              value={form.name}
+              value={addForm.name}
               required
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
             />
           </label>
           <label className="settings__field">
             <span>{t('mcp.fields.url')}</span>
             <input
               type="url"
-              value={form.url}
+              value={addForm.url}
               required
               placeholder="http://localhost:8080/mcp"
-              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+              onChange={(e) => setAddForm((f) => ({ ...f, url: e.target.value }))}
             />
           </label>
           <label className="settings__field settings__field--full">
@@ -394,25 +594,25 @@ export default function McpSettings({
             <textarea
               className="settings__textarea"
               rows={3}
-              value={form.headers}
+              value={addForm.headers}
               placeholder={'Authorization=Bearer ...\nX-Custom=value'}
-              onChange={(e) => setForm((f) => ({ ...f, headers: e.target.value }))}
+              onChange={(e) => setAddForm((f) => ({ ...f, headers: e.target.value }))}
             />
           </label>
           <label className="settings__field settings__field--check">
             <input
               type="checkbox"
-              checked={form.enabled}
-              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+              checked={addForm.enabled}
+              onChange={(e) => setAddForm((f) => ({ ...f, enabled: e.target.checked }))}
             />
             <span>{t('mcp.fields.enabled')}</span>
           </label>
           <div className="mcp__form-actions">
-            <button type="button" className="btn btn--secondary" onClick={closeForm}>
+            <button type="button" className="btn btn--secondary" onClick={closeAdd}>
               <span>{t('settings.reset')}</span>
             </button>
             <button type="submit" className="btn btn--primary">
-              <span>{form.id ? t('mcp.save') : t('mcp.add')}</span>
+              <span>{t('mcp.add')}</span>
             </button>
           </div>
         </form>

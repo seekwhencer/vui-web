@@ -21,6 +21,7 @@ import McpSettings, {
   POLICY_OPTIONS,
   policyKey,
   parseHosts,
+  matchesToolFilter,
 } from './McpSettings.jsx';
 
 const SERVERS = [
@@ -68,6 +69,54 @@ describe('parseHosts (SSRF-Whitelist)', () => {
     expect(parseHosts('')).toEqual([]);
     expect(parseHosts(null)).toEqual([]);
     expect(parseHosts(undefined)).toEqual([]);
+  });
+});
+
+describe('matchesToolFilter (Tool-Filter)', () => {
+  const NO_FILTER = { policy: null, keyword: '' };
+  const TOOL = { name: 'get_forecast', description: 'Fetch weather forecast' };
+
+  it('lässt ohne Filter alles durch', () => {
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, NO_FILTER)).toBe(true);
+  });
+
+  it('filtert nach gesetzter Policy', () => {
+    // weather__get_forecast = read → matcht read, nicht write.
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: 'read', keyword: '' })).toBe(true);
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: 'write', keyword: '' })).toBe(false);
+  });
+
+  it('nutzt deny-by-default für nicht gesetzte Tools', () => {
+    // weather__set_forecast nicht gesetzt → effective deny.
+    const t2 = { name: 'set_forecast' };
+    expect(matchesToolFilter(t2, 'weather', POLICIES, { policy: 'deny', keyword: '' })).toBe(true);
+    expect(matchesToolFilter(t2, 'weather', POLICIES, { policy: 'read', keyword: '' })).toBe(false);
+  });
+
+  it('matcht Stichwort case-insensitiv auf Name + Beschreibung', () => {
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: null, keyword: 'FORECAST' })).toBe(true);
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: null, keyword: 'weather' })).toBe(true);
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: null, keyword: 'xyz' })).toBe(false);
+  });
+
+  it('kombiniert Policy + Stichwort (UND)', () => {
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: 'read', keyword: 'forecast' })).toBe(true);
+    expect(matchesToolFilter(TOOL, 'weather', POLICIES, { policy: 'write', keyword: 'forecast' })).toBe(false);
+  });
+});
+
+describe('McpSettings (Rendering: Tool-Filter)', () => {
+  it('zeigt Policy-Buttons, Stichwort-Feld und Reset-Button', () => {
+    const html = renderToString(
+      <McpSettings servers={SERVERS} tools={TOOLS} policies={POLICIES} />
+    );
+
+    expect(html).toContain('mcp__tool-filter');
+    expect(html).toContain('mcp__tool-filter-policies');
+    expect(html).toContain('mcp__tool-filter-input');
+    // Vier Policy-Buttons (aria-pressed) + Reset-Button.
+    expect((html.match(/aria-pressed=/g) || []).length).toBeGreaterThanOrEqual(4);
+    expect(html).toContain('Reset filter');
   });
 });
 

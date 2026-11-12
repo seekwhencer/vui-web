@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  position: relative;
 }
 
 .mcp__header {
@@ -41,9 +42,11 @@
 
 .mcp__loading,
 .mcp__empty {
-  color: var(--color-text-secondary);
-  font-size: var(--fs-sm);
+  color: var(--color-validation);
+  font-size: var(--fs-xs);
   margin: 0;
+  position: absolute;
+  top: -10px;
 }
 
 .mcp__list {
@@ -62,6 +65,34 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.mcp__item.is-connected {
+
+}
+.mcp__item.is-connected::before {
+  content: '';
+  width: 2px;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top:0; 
+  background-color: var(--color-success);
+}
+
+.mcp__item.is-disconnected {
+}
+
+.mcp__item.is-disconnected::before {
+  content: '';
+  width: 2px;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top:0; 
+  background-color: var(--color-error);
 }
 
 .mcp__item-head {
@@ -111,6 +142,43 @@
   color: var(--color-text-secondary);
 }
 
+.mcp__tool-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mcp__tool-filter-policies {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.mcp__tool-filter-input {
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  background-color: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  min-width: 140px;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.mcp__tool-filter-input:focus {
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+  outline: none;
+}
+
+.mcp__filter-empty {
+  color: var(--color-text-secondary);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
 .mcp__tools {
   list-style: none;
   margin: 0;
@@ -156,6 +224,13 @@
   margin: 0;
   font-size: var(--fs-md);
   color: var(--color-text);
+}
+
+/* Inline-Edit-Formular: sitzt im mcp__item (an der Stelle von mcp__item-head). */
+.mcp__form--inline {
+  border: none;
+  padding: 0;
+  gap: var(--space-2);
 }
 
 .mcp__form-actions {

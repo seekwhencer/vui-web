@@ -291,6 +291,8 @@ cd frontend && npm test        # vitest (hooks)
 | Settings — LLM | <img src=".docs/screenshots/settings-llm-dark.png" alt="Settings LLM (dark)" width="360"> | <img src=".docs/screenshots/settings-llm-light.png" alt="Settings LLM (light)" width="360"> |
 | Settings — Badwords | <img src=".docs/screenshots/settings-badwords-dark.png" alt="Settings Badwords (dark)" width="360"> | <img src=".docs/screenshots/settings-badwords-light.png" alt="Settings Badwords (light)" width="360"> |
 | Settings — MCP | <img src=".docs/screenshots/settings-mcp-dark.png" alt="Settings MCP (dark)" width="360"> | <img src=".docs/screenshots/settings-mcp-light.png" alt="Settings MCP (light)" width="360"> |
+| Settings — MCP Tools | <img src=".docs/screenshots/settings-mcp-tools-dark.png" alt="Settings MCP Tools (dark)" width="360"> | <img src=".docs/screenshots/settings-mcp-tools-light.png" alt="Settings MCP Tools (light)" width="360"> |
+| Settings — MCP Tools (Deny) | <img src=".docs/screenshots/settings-mcp-tools-deny-dark.png" alt="Settings MCP Tools Deny (dark)" width="360"> | <img src=".docs/screenshots/settings-mcp-tools-deny-light.png" alt="Settings MCP Tools Deny (light)" width="360"> |
 | Settings — UI | <img src=".docs/screenshots/settings-ui-dark.png" alt="Settings UI (dark)" width="360"> | <img src=".docs/screenshots/settings-ui-light.png" alt="Settings UI (light)" width="360"> |
 
 ## License

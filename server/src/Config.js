@@ -63,6 +63,9 @@ const LLM_PARAMS = {
     systemPrompt: { env: 'LLM_SYSTEM_PROMPT', type: 'string', default: 'You are a helpful assistant. Answer in markdown format.' },
 };
 
+/** Bekannte virtuelle Tool-Namen (Whitelist für security.virtualTools). */
+const VIRTUAL_TOOL_NAMES = ['get_config', 'get_mcp', 'get_policies', 'get_stats'];
+
 /**
  * Security-Parameter (Zero-Trust, Phase 1).
  *
@@ -82,6 +85,7 @@ const SECURITY_PARAMS = {
     systemPrompt: { env: 'SECURITY_SYSTEM_PROMPT', type: 'string', default: '' },
     toolPolicies: { env: 'SECURITY_TOOL_POLICIES', type: 'object', default: {} },
     allowedHosts: { env: 'SECURITY_ALLOWED_HOSTS', type: 'array', default: [] },
+    virtualTools: { env: 'SECURITY_VIRTUAL_TOOLS', type: 'object', default: {} },
 };
 
 /**
@@ -317,7 +321,11 @@ class Config {
             llm: { ...this.llm },
             badwords: [...this.badwords],
             mcpServers: [...this.mcpServers],
-            security: { ...this.security, toolPolicies: { ...(this.security.toolPolicies || {}) } }
+            security: {
+                ...this.security,
+                toolPolicies: { ...(this.security.toolPolicies || {}) },
+                virtualTools: { ...(this.security.virtualTools || {}) }
+            }
         };
     }
 
@@ -453,6 +461,7 @@ class Config {
      */
     validateSecurityParam(key, spec, value) {
         const label = `security.${key}`;
+        if (key === 'virtualTools') return this.validateVirtualTools(value);
         switch (spec.type) {
             case 'string':
                 if (typeof value !== 'string') return `${label} muss ein String sein`;
@@ -475,6 +484,22 @@ class Config {
                     if (typeof v !== 'string' || v.trim() === '') return `${label}[${i}] muss ein nicht-leerer String sein`;
                 }
                 break;
+        }
+        return null;
+    }
+
+    /**
+     * Validiert den virtualTools-Block (Toggle je virtuelles Tool).
+     * @param {unknown} value
+     * @returns {string | null}
+     */
+    validateVirtualTools(value) {
+        const label = 'security.virtualTools';
+        if (value === null || typeof value !== 'object' || Array.isArray(value))
+            return `${label} muss ein Objekt sein`;
+        for (const [k, v] of Object.entries(value)) {
+            if (!VIRTUAL_TOOL_NAMES.includes(k)) return `${label}.${k} ist kein gültiges virtuelles Tool`;
+            if (typeof v !== 'boolean') return `${label}.${k} muss ein Boolean sein`;
         }
         return null;
     }
@@ -561,7 +586,11 @@ class Config {
         this.whisperPort = next.whisperPort;
         this.whisper = { ...next.whisper };
         this.llm = { ...next.llm };
-        this.security = { ...next.security, toolPolicies: { ...(next.security.toolPolicies || {}) } };
+        this.security = {
+            ...next.security,
+            toolPolicies: { ...(next.security.toolPolicies || {}) },
+            virtualTools: { ...(next.security.virtualTools || {}) }
+        };
         this.badwords = next.badwords.map((w) => String(w)).filter(Boolean);
         this.mcpServers = (next.mcpServers || []).map((s) => ({ ...s }));
 
@@ -599,4 +628,4 @@ class Config {
     }
 }
 
-export { Config, WHISPER_PARAMS, LLM_PARAMS, SECURITY_PARAMS, VAD_PARAM_KEYS };
+export { Config, WHISPER_PARAMS, LLM_PARAMS, SECURITY_PARAMS, VAD_PARAM_KEYS, VIRTUAL_TOOL_NAMES };

@@ -108,19 +108,22 @@ describe('Llm.chat()', () => {
     it('liefert den Antworttext (OpenAI-kompatibel)', async () => {
         const llm = new Llm({ config: openaiConfig(), logger: silent });
         const answer = await llm.chat([{ role: 'user', content: 'hi' }]);
-        expect(answer).toBe('OPENAI_ANSWER');
+        expect(answer.content).toBe('OPENAI_ANSWER');
+        expect(answer.usage).toEqual({ prompt: 0, completion: 0, total: 0 });
     });
 
     it('liefert den Antworttext (Ollama)', async () => {
         const llm = new Llm({ config: ollamaConfig(), logger: silent });
         const answer = await llm.chat([{ role: 'user', content: 'hi' }]);
-        expect(answer).toBe('OLLAMA_ANSWER');
+        expect(answer.content).toBe('OLLAMA_ANSWER');
+        expect(answer.usage).toEqual({ prompt: 0, completion: 0, total: 0 });
     });
 
     it('liefert die Refusal, wenn content null ist', async () => {
         const llm = new Llm({ config: refusalConfig(), logger: silent });
         const answer = await llm.chat([{ role: 'user', content: 'hi' }]);
-        expect(answer).toBe('REFUSED_ANSWER');
+        expect(answer.content).toBe('REFUSED_ANSWER');
+        expect(answer.usage).toEqual({ prompt: 0, completion: 0, total: 0 });
     });
 });
 

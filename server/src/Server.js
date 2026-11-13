@@ -10,6 +10,7 @@ import { ApprovalService } from './Security/ApprovalService.js';
 import { ActionStore } from './Security/ActionStore.js';
 import { Audit } from './Security/Audit.js';
 import { ExecutionGateway } from './Security/ExecutionGateway.js';
+import { Stats } from './Stats.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -65,8 +66,14 @@ export class Server {
 
         const security = { policy, approval, audit, gateway, store };
 
+        // In-memory-Stats-Collector (LLM-Tokens, Transkriptionen, Uptime).
+        // Reset bei Server-Neustart — bewusst nicht persistent.
+        const stats = new Stats();
+
         // append the routes
-        this.router = new Router(this.config, this.httpServer, this.logger, security, mcp);
+        this.router = new Router(this.config, this.httpServer, this.logger, security, mcp, stats);
+        this.router.stats = stats;
+        this.router.transcribeBridge.onTranscription = () => stats.recordTranscription();
         await this.router.define();
         this.app.use(this.router.router);
 

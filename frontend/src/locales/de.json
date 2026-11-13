@@ -197,6 +197,18 @@
       "title": "SSRF-Whitelist",
       "hint": "Der SSRF-Guard blockiert MCP-Server auf privaten/lokalen IPs (Loopback, LAN, Cloud-Metadaten). Hosts in dieser Liste sind ausgenommen — z. B. lokale MCP-Server. Komma-getrennt.",
       "label": "Erlaubte Hosts"
+    },
+    "builtinTools": {
+      "title": "Eingebaute Tools",
+      "hint": "Server-seitig aufgelöste Tools für den Chat. Deaktivierte Tools werden der LLM-Tool-Liste entnommen.",
+      "enabled": "Aktiviert",
+      "disabled": "Deaktiviert",
+      "tools": {
+        "get_config": "Liefert die aktuelle VUI-Server-Configuration als strukturiertes Markdown.",
+        "get_mcp": "Liefert die konfigurierten MCP-Server mit Einstellungen, Verbindungsstatus und Tool-Listen.",
+        "get_policies": "Liefert die Tool-Policies (read/write/execute/deny) und die SSRF-Allowlist.",
+        "get_stats": "Liefert Laufzeit-Statistiken: Uptime, LLM-Token-Nutzung, MCP-Verbindungen, Transkriptionen."
+      }
     }
   },
   "about": {

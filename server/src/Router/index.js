@@ -6,6 +6,7 @@ import { Llm } from '../Llm.js';
 import { McpManager } from '../McpManager.js';
 import { wrapUntrusted } from '../Security/Untrusted.js';
 import { getSecurityPrompt } from '../Security/SystemPrompt.js';
+import { getVirtualToolDefinitions, resolveVirtualTool, VIRTUAL_TOOLS } from '../VirtualTools.js';
 
 /**
  * Main router class that aggregates all server routes.
@@ -21,13 +22,15 @@ class Router {
      *   vorhanden, bleibt das Legacy-Verhalten (direkte Tool-Ausführung) —
      *   nur für Backward-Compatibility; die Produktion injiziert immer Security.
      * @param {McpManager} [mcp] - Optionaler geteilter MCP-Manager (sonst intern erzeugt).
+     * @param {Stats} [stats] - Optionaler In-memory-Stats-Collector (LLM-Tokens, Transkriptionen).
      */
-    constructor(config, httpServer, logger, security = null, mcp = null) {
+    constructor(config, httpServer, logger, security = null, mcp = null, stats = null) {
         this.config = config;
         this.httpServer = httpServer;
         this.label = '[Router]';
         this.logger = logger || { log: () => {}, error: () => {} };
         this.security = security;
+        this.stats = stats;
 
         this.router = express.Router();
         this.router.use(express.json());
@@ -52,6 +55,27 @@ class Router {
     maxToolTurns() {
         const t = this.config?.security?.maxToolTurns;
         return Number.isFinite(t) && t > 0 ? t : 10;
+    }
+
+    /**
+     * Liefert die aktiven virtuellen Tool-Definitionen (gefiltert nach
+     * config.security.virtualTools). Ein Tool ist aktiv, solange sein Flag
+     * nicht explizit `false` ist (Default: aktiv).
+     * @returns {Array<object>} OpenAI-Tool-Definitionen
+     */
+    enabledVirtualToolDefinitions() {
+        const flags = this.config?.getSettings?.()?.security?.virtualTools || {};
+        return getVirtualToolDefinitions().filter((def) => flags[def.function?.name] !== false);
+    }
+
+    /**
+     * Baut die vollständige Tool-Liste für den LLM-Request:
+     * bestehende MCP-Tools + aktive virtuelle Tools.
+     * @param {Array<object>} mcpTools - MCP-Tool-Definitionen
+     * @returns {Array<object>}
+     */
+    buildToolList(mcpTools) {
+        return [...mcpTools, ...this.enabledVirtualToolDefinitions()];
     }
 
     /**
@@ -135,7 +159,7 @@ class Router {
                 llmOptions.reasoning_effort = req.body.reasoning_effort;
             }
 
-            const tools = this.mcp.toOpenAITools();
+            const tools = this.buildToolList(this.mcp.toOpenAITools());
             let stats = null;
 
             // Graceful Degradation: Nur wenn Tools vorhanden UND das Backend
@@ -156,6 +180,7 @@ class Router {
                         if (res.writableEnded) break;
                         if (chunk.phase === 'stats') {
                             stats = chunk;
+                            this.stats?.recordLlm(chunk.tokens);
                             continue;
                         }
                         if (send(chunk.phase, chunk.token) === false) break;
@@ -178,6 +203,7 @@ class Router {
                         if (res.writableEnded) break;
                         if (chunk.phase === 'stats') {
                             stats = chunk;
+                            this.stats?.recordLlm(chunk.tokens);
                             continue;
                         }
                         if (chunk.phase === 'turn') {
@@ -211,27 +237,35 @@ class Router {
                     // Jeden Tool-Call ausführen + Ergebnis senden + anhängen.
                     for (const call of turnToolCalls) {
                         if (res.writableEnded) break;
-                        const parsed = this.mcp.parseToolName(call.function?.name);
+                        const toolName = call.function?.name;
                         let args = {};
                         try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
 
                         send('tool_call', {
                             id: call.id,
-                            name: call.function?.name,
+                            name: toolName,
                             arguments: args,
                         });
 
                         let content = 'Unbekanntes Tool';
                         let isError = true;
-                        if (parsed) {
-                            if (this.security) {
-                                const result = await this.handleToolCall(parsed, args, { send, reason: turnContent });
-                                content = result.content;
-                                isError = result.isError;
-                            } else {
-                                const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
-                                content = result.content;
-                                isError = result.isError;
+                        // Virtuelles Tool → lokal auflösen (kein MCP, kein Policy-Check).
+                        if (VIRTUAL_TOOLS[toolName]) {
+                            const result = resolveVirtualTool(toolName, args, { config: this.config, mcp: this.mcp, stats: this.stats });
+                            content = result.content;
+                            isError = result.isError;
+                        } else {
+                            const parsed = this.mcp.parseToolName(toolName);
+                            if (parsed) {
+                                if (this.security) {
+                                    const result = await this.handleToolCall(parsed, args, { send, reason: turnContent });
+                                    content = result.content;
+                                    isError = result.isError;
+                                } else {
+                                    const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                                    content = result.content;
+                                    isError = result.isError;
+                                }
                             }
                         }
 
@@ -653,7 +687,7 @@ class Router {
      */
     async runChatWithMcpTools(question, history, options = {}) {
         const messages = this.buildChatMessages(question, history);
-        const tools = this.mcp.toOpenAITools();
+        const tools = this.buildToolList(this.mcp.toOpenAITools());
         const maxTurns = this.maxToolTurns();
 
         // Kein Tool-Support im Backend → normaler Chat (Graceful Degradation).
@@ -662,12 +696,17 @@ class Router {
             if (!supported) {
                 this.logger.log(this.label,
                     'LLM-Backend unterstützt kein Function-Calling. MCP-Tools werden nicht aufgerufen.');
-                return this.llm.chat(messages, options);
+                const result = await this.llm.chat(messages, options);
+                // Llm.chat() liefert { content, usage }; ältere Mocks liefern einen String.
+                const answer = typeof result === 'string' ? result : (result?.content ?? '');
+                this.stats?.recordLlm(typeof result === 'string' ? undefined : result?.usage);
+                return answer;
             }
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
             const turnResult = await this.llm.chatWithTools(messages, tools, options);
+            this.stats?.recordLlm(turnResult.usage);
 
             // Keine Tool-Calls → finale Antwort.
             if (!turnResult.toolCalls || turnResult.toolCalls.length === 0) {
@@ -683,19 +722,28 @@ class Router {
 
             // Jeden Tool-Call ausführen + Ergebnis anhängen.
             for (const call of turnResult.toolCalls) {
-                const parsed = this.mcp.parseToolName(call.function?.name);
+                const toolName = call.function?.name;
+                let args = {};
+                try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
+
                 let content = 'Unbekanntes Tool';
-                if (parsed) {
-                    let args = {};
-                    try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
-                    if (this.security) {
-                        const result = await this.handleToolCall(parsed, args, { reason: turnResult.content });
-                        content = result.content;
-                    } else {
-                        const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
-                        content = result.content;
+                // Virtuelles Tool → lokal auflösen (kein MCP, kein Policy-Check).
+                if (VIRTUAL_TOOLS[toolName]) {
+                    const result = resolveVirtualTool(toolName, args, { config: this.config, mcp: this.mcp, stats: this.stats });
+                    content = result.content;
+                } else {
+                    const parsed = this.mcp.parseToolName(toolName);
+                    if (parsed) {
+                        if (this.security) {
+                            const result = await this.handleToolCall(parsed, args, { reason: turnResult.content });
+                            content = result.content;
+                        } else {
+                            const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                            content = result.content;
+                        }
                     }
                 }
+
                 messages.push({
                     role: 'tool',
                     tool_call_id: call.id,

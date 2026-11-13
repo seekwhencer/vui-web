@@ -21,10 +21,13 @@ const OVERLAP_BYTES = SAMPLE_RATE * WIDTH * OVERLAP_SECONDS;
 const WYOMING_TIMEOUT_MS = 30000;
 
 class TranscribeBridge {
-    constructor(config, logger) {
+    constructor(config, logger, onTranscription) {
         this.config = config;
         this.logger = logger || { log: () => { }, error: () => { } };
         this.label = '[TranscribeBridge]';
+        this.onTranscription = typeof onTranscription === 'function'
+            ? onTranscription
+            : null;
 
         this.wss = new WebSocketServer({ noServer: true });
         this.clients = new Set();
@@ -78,6 +81,10 @@ class TranscribeBridge {
             chain = chain
                 .then(async () => {
                     const raw = await this.transcribe(pcm);
+
+                    // Count successful transcriptions (Wyoming 'transcript' event).
+                    this.notifyTranscription();
+
                     const text = this.filterBadwords(raw);
 
                     // Remove repeated words caused by audio overlap.
@@ -458,6 +465,26 @@ class TranscribeBridge {
                 );
             });
         });
+    }
+
+    /**
+     * Invokes the optional onTranscription callback.
+     * Errors are logged but never break the transcription flow.
+     */
+    notifyTranscription() {
+        if (typeof this.onTranscription !== 'function') {
+            return;
+        }
+
+        try {
+            this.onTranscription();
+        } catch (err) {
+            this.logger.error(
+                this.label,
+                'onTranscription-Callback fehlgeschlagen',
+                { error: err.message }
+            );
+        }
     }
 
     /**

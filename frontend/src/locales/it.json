@@ -197,6 +197,18 @@
       "title": "Whitelist SSRF",
       "hint": "Il guard SSRF blocca i server MCP su IP private/locali (loopback, LAN, metadati cloud). Gli host in questa lista sono esentati — es. server MCP locali. Separati da virgola.",
       "label": "Host consentiti"
+    },
+    "builtinTools": {
+      "title": "Strumenti integrati",
+      "hint": "Strumenti risolti lato server per la chat. Gli strumenti disattivati vengono rimossi dall'elenco strumenti LLM.",
+      "enabled": "Attivato",
+      "disabled": "Disattivato",
+      "tools": {
+        "get_config": "Restituisce la configurazione attuale del server VUI come Markdown strutturato.",
+        "get_mcp": "Restituisce i server MCP configurati con impostazioni, stato di connessione ed elenchi strumenti.",
+        "get_policies": "Restituisce le policy degli strumenti (read/write/execute/deny) e la whitelist SSRF.",
+        "get_stats": "Restituisce statistiche di runtime: uptime, utilizzo token LLM, connessioni MCP, trascrizioni."
+      }
     }
   },
   "about": {

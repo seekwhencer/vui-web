@@ -58,10 +58,11 @@ class Llm {
     }
 
     /**
-     * Sendet eine Chat-Anfrage und liefert den vollständigen Antworttext.
+     * Sendet eine Chat-Anfrage und liefert den vollständigen Antworttext inkl. Token-Usage.
      * @param {Array<object>} messages - Array von Chat-Nachrichten
      * @param {object} [options={}] - Zusätzliche Optionen (z. B. model, temperature)
-     * @returns {Promise<string>} Der Antworttext des Assistenten
+     * @returns {Promise<{content: string|null, usage: {prompt: number, completion: number, total: number}}>}
+     *          Der Antworttext des Assistenten plus der verbrauchten Tokens
      */
     async chat(messages, options = {}) {
         const cfg = this.chatConfig;
@@ -78,7 +79,12 @@ class Llm {
 
                 this.logger.log(this.label, 'CHOICES', res.data.choices);
 
-                return this._extractOpenAIAnswer(res.data);
+                const turn = this._extractOpenAITurn(res.data);
+                const content = turn.content ?? turn.refusal;
+                if (content === null || content === undefined) {
+                    throw new Error('LLM lieferte keine Antwort (content und refusal leer)');
+                }
+                return { content, usage: turn.usage };
             }
 
             const res = await axios.post(`${base}/api/chat`, {
@@ -87,7 +93,8 @@ class Llm {
                 stream: false,
                 ...llmOptions
             }, { signal });
-            return res.data.message.content;
+            const turn = this._extractOllamaTurn(res.data);
+            return { content: turn.content, usage: turn.usage };
         } catch (error) {
             this.logger.error(this.label, 'Chat fehlgeschlagen', { error: error.message });
             throw error;
@@ -96,11 +103,11 @@ class Llm {
 
     /**
      * Non-streaming Chat mit Function-Calling (Tools).
-     * Liefert den vollständigen Turn inkl. angeforderter Tool-Calls.
+     * Liefert den vollständigen Turn inkl. angeforderter Tool-Calls und Token-Usage.
      * @param {Array<object>} messages - Array von Chat-Nachrichten
      * @param {Array<object>} [tools] - OpenAI-Function-Tools (leer/undefined = ohne Tools)
      * @param {object} [options={}] - Zusätzliche Optionen (z. B. model, temperature)
-     * @returns {Promise<{content: string|null, toolCalls: Array<object>, refusal: string|null}>}
+     * @returns {Promise<{content: string|null, toolCalls: Array<object>, refusal: string|null, usage: {prompt: number, completion: number, total: number}}>}
      */
     async chatWithTools(messages, tools, options = {}) {
         const cfg = this.chatConfig;
@@ -130,31 +137,45 @@ class Llm {
     }
 
     /**
-     * Extrahiert einen LLM-Turn (content + tool_calls + refusal) aus einer OpenAI-Antwort.
-     * @param {object} data - Die Response-Data (`{ choices: [...] }`)
-     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null}}
+     * Extrahiert einen LLM-Turn (content + tool_calls + refusal + usage) aus einer OpenAI-Antwort.
+     * @param {object} data - Die Response-Data (`{ choices: [...], usage: {...} }`)
+     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null, usage: {prompt: number, completion: number, total: number}}}
      */
     _extractOpenAITurn(data) {
         const message = data?.choices?.[0]?.message || {};
+        const usage = data?.usage || {};
         return {
             content: typeof message.content === 'string' ? message.content : null,
             toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
             refusal: typeof message.refusal === 'string' ? message.refusal : null,
+            usage: {
+                prompt: usage.prompt_tokens ?? 0,
+                completion: usage.completion_tokens ?? 0,
+                total: usage.total_tokens ?? 0,
+            },
         };
     }
 
     /**
-     * Extrahiert einen LLM-Turn (content + tool_calls + refusal) aus einer Ollama-Antwort.
+     * Extrahiert einen LLM-Turn (content + tool_calls + refusal + usage) aus einer Ollama-Antwort.
      * Ollama nutzt das OpenAI-Format (`message.tool_calls`).
-     * @param {object} data - Die Response-Data (`{ message: {...} }`)
-     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null}}
+     * Usage kommt aus `prompt_eval_count` (Prompt) und `eval_count` (Completion).
+     * @param {object} data - Die Response-Data (`{ message: {...}, prompt_eval_count, eval_count }`)
+     * @returns {{content: string|null, toolCalls: Array<object>, refusal: string|null, usage: {prompt: number, completion: number, total: number}}}
      */
     _extractOllamaTurn(data) {
         const message = data?.message || {};
+        const prompt = data?.prompt_eval_count ?? 0;
+        const completion = data?.eval_count ?? 0;
         return {
             content: typeof message.content === 'string' ? message.content : null,
             toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
             refusal: typeof message.refusal === 'string' ? message.refusal : null,
+            usage: {
+                prompt,
+                completion,
+                total: prompt + completion,
+            },
         };
     }
 

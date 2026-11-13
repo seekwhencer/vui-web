@@ -288,6 +288,7 @@
 
 .msg--user {
   justify-content: flex-end;
+  border-left: var(--space-1) solid var(--color-primary);
 }
 
 .msg--assistant {

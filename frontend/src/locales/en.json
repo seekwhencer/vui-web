@@ -197,6 +197,18 @@
       "title": "SSRF Allowlist",
       "hint": "The SSRF guard blocks MCP servers on private/local IPs (loopback, LAN, cloud metadata). Hosts in this list are exempt — e.g. local MCP servers. Comma-separated.",
       "label": "Allowed hosts"
+    },
+    "builtinTools": {
+      "title": "Built-in Tools",
+      "hint": "Server-resolved tools for chat. Disabled tools are removed from the LLM tool list.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "tools": {
+        "get_config": "Returns the current VUI server configuration as structured Markdown.",
+        "get_mcp": "Returns the configured MCP servers with settings, connection status and tool lists.",
+        "get_policies": "Returns the tool policies (read/write/execute/deny) and the SSRF allowlist.",
+        "get_stats": "Returns runtime statistics: uptime, LLM token usage, MCP connections, transcriptions."
+      }
     }
   },
   "about": {

@@ -3,6 +3,7 @@ import http from 'node:http';
 import express from 'express';
 import { createServer as createHttpServer } from 'node:http';
 import { Router } from '../src/Router/index.js';
+import { Stats } from '../src/Stats.js';
 
 // FrontendRouter.init() startet Vite, wenn NODE_ENV=development.
 // Für deterministische Tests ohne Vite (und sauberen Exit) NODE_ENV=test erzwingen.
@@ -74,6 +75,8 @@ function parseSSE(text) {
 
 let fastSrv, slowSrv, fastPort, slowPort;
 let app, appHttpServer, appPort, config;
+let router;
+let realLlm, realMcp, realStats;
 
 beforeAll(async () => {
     fastSrv = createMockLlm({ slow: false });
@@ -91,14 +94,31 @@ beforeAll(async () => {
 
     app = express();
     appHttpServer = createHttpServer(app);
-    const router = new Router(config, appHttpServer, silent);
+    router = new Router(config, appHttpServer, silent);
     await router.define();
     app.use(router.router);
     await new Promise((r) => appHttpServer.listen(0, '127.0.0.1', r));
     appPort = appHttpServer.address().port;
+
+    // Virtuelle-Tool-Tests ersetzen router.llm/mcp/stats durch Mocks.
+    // Originale merken, damit afterAll sie wiederherstellen kann.
+    realLlm = router.llm;
+    realMcp = router.mcp;
+    realStats = router.stats;
+
+    // Die Plain-Config hat kein getSettings() — für enabledVirtualToolDefinitions()
+    // und die Settings-Routen additiv ergänzen (liefert die Config selbst).
+    config.getSettings = () => config;
 });
 
 afterAll(async () => {
+    // Virtuelle-Tool-Tests haben router.llm/mcp/stats ersetzt → Originale
+    // wiederherstellen, bevor der Server heruntergefahren wird.
+    if (router) {
+        router.llm = realLlm;
+        router.mcp = realMcp;
+        router.stats = realStats;
+    }
     appHttpServer.closeAllConnections?.();
     await new Promise((r) => appHttpServer.close(r));
     for (const srv of [fastSrv, slowSrv]) {
@@ -112,6 +132,91 @@ const post = (path, bodyObj) => fetch(`http://127.0.0.1:${appPort}${path}`, {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(bodyObj)
 });
+
+// ── Virtuelle-Tool-Mocks (ersetzen router.llm/mcp/stats, kein Netzwerk) ──
+
+/** Baut einen OpenAI-Tool-Call-Objekt (für die Mock-Turns). */
+function toolCall(name, args = {}) {
+    return {
+        id: `call_${name}`,
+        type: 'function',
+        function: { name, arguments: JSON.stringify(args) },
+    };
+}
+
+/**
+ * Mock-Llm: `detectToolSupport` → true, `chatWithTools`/`streamChatWithTools`
+ * liefern die vorgegebenen `turns` (je Aufruf den nächsten Turn).
+ * `turns[i]` = `{ content, toolCalls, usage }`.
+ */
+function makeMockLlm({ turns = [] } = {}) {
+    const state = { chatWithToolsCalls: [], streamChatWithToolsCalls: [] };
+    let turnIndex = 0;
+    const nextTurn = () => turns[turnIndex++] || { content: 'DONE', toolCalls: [] };
+
+    const llm = {
+        detectToolSupport: async () => true,
+        chatWithTools: async (messages, tools, options) => {
+            state.chatWithToolsCalls.push({ messages, tools, options });
+            const turn = nextTurn();
+            return { content: turn.content, toolCalls: turn.toolCalls || [], usage: turn.usage || { prompt: 10, completion: 5, total: 15 } };
+        },
+        streamChatWithTools: async function* (messages, tools, options) {
+            state.streamChatWithToolsCalls.push({ messages, tools, options });
+            const turn = nextTurn();
+            if (turn.content) yield { phase: 'answer', token: turn.content };
+            yield { phase: 'turn', content: turn.content, toolCalls: turn.toolCalls || [], reasoning: '' };
+            if (turn.usage) yield { phase: 'stats', tokens: turn.usage };
+        },
+        chat: async () => ({ content: 'CHAT_ANSWER', usage: { prompt: 1, completion: 1, total: 2 } }),
+        streamChat: async function* () {
+            yield { phase: 'answer', token: 'CHAT' };
+            yield { phase: 'stats', tokens: { prompt: 1, completion: 1, total: 2 } };
+        },
+    };
+    llm._state = state;
+    return llm;
+}
+
+/** Mock-Mcp: `listServers`/`connections`/`toOpenAITools`/`parseToolName`/`callTool`. */
+function makeMockMcp({ servers = [], connections = {} } = {}) {
+    const state = { callToolCalls: [] };
+    return {
+        listServers: () => servers,
+        connections: new Map(Object.entries(connections)),
+        toOpenAITools: () => [],
+        parseToolName: () => null,
+        callTool: async (serverId, toolName, args) => {
+            state.callToolCalls.push({ serverId, toolName, args });
+            return { content: 'MCP_TOOL_RESULT', isError: false };
+        },
+        _state: state,
+    };
+}
+
+/**
+ * Ersetzt `router.llm/mcp/stats` durch frische Mocks.
+ * @returns {{llm, mcp, stats}}
+ */
+function setupVirtualMocks({ llmTurns = [], mcpServers = [], mcpConnections = {} } = {}) {
+    const llm = makeMockLlm({ turns: llmTurns });
+    const mcp = makeMockMcp({ servers: mcpServers, connections: mcpConnections });
+    const stats = new Stats();
+    router.llm = llm;
+    router.mcp = mcp;
+    router.stats = stats;
+    return { llm, mcp, stats };
+}
+
+/** Findet das erste `role:'tool'`-Ergebnis in den aufgezeichneten Llm-Aufrufen. */
+function findToolResult(llm) {
+    for (const call of llm._state.chatWithToolsCalls) {
+        for (const msg of call.messages) {
+            if (msg.role === 'tool') return msg;
+        }
+    }
+    return null;
+}
 
 describe('POST /api/chat', () => {
     it('liefert 200 + { success:true, data:{ answer } }', async () => {
@@ -191,6 +296,224 @@ describe('POST /api/chat/stream', () => {
             expect(health.status).toBe(200);
         } finally {
             config.llm.port = originalPort;
+        }
+    });
+});
+
+describe('POST /api/chat — virtuelle Tools', () => {
+    it('LLM ruft get_config auf → tool_result enthält ## LLM', async () => {
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', {})] },
+                { content: 'Config geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Zeig mir die Config' });
+        expect(r.status).toBe(200);
+        const j = await r.json();
+        expect(j.success).toBe(true);
+        const toolResult = findToolResult(llm);
+        expect(toolResult).not.toBeNull();
+        expect(toolResult.content).toContain('## LLM');
+    });
+
+    it('LLM ruft get_config mit section=whisper auf → tool_result enthält NUR ## Whisper', async () => {
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', { section: 'whisper' })] },
+                { content: 'Whisper-Config', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Zeig mir die Whisper-Config' });
+        expect(r.status).toBe(200);
+        const toolResult = findToolResult(llm);
+        expect(toolResult.content).toContain('## Whisper');
+        expect(toolResult.content).not.toContain('## LLM');
+        expect(toolResult.content).not.toContain('## Security');
+        expect(toolResult.content).not.toContain('## MCP-Server');
+    });
+
+    it('LLM ruft get_mcp auf → tool_result enthält Server-Liste, NICHT headers', async () => {
+        const servers = [{ id: 'srv-a', name: 'Server A', url: 'https://a.example.com/sse', transport: 'streamable-http', enabled: true, status: 'connected', toolCount: 1, error: null, headers: { Authorization: 'Bearer SECRET' } }];
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_mcp', {})] },
+                { content: 'MCP-Server geladen', toolCalls: [] },
+            ],
+            mcpServers: servers,
+            mcpConnections: { 'srv-a': { tools: [{ name: 'search', description: 'Sucht' }] } },
+        });
+        const r = await post('/api/chat', { question: 'Welche MCP-Server sind konfiguriert?' });
+        expect(r.status).toBe(200);
+        const toolResult = findToolResult(llm);
+        expect(toolResult.content).toContain('## srv-a');
+        expect(toolResult.content).toContain('Server A');
+        expect(toolResult.content).not.toContain('SECRET');
+        expect(toolResult.content).not.toContain('headers');
+    });
+
+    it('LLM ruft get_policies auf → tool_result enthält Default: deny', async () => {
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_policies', {})] },
+                { content: 'Policies geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Welche Tools sind erlaubt?' });
+        expect(r.status).toBe(200);
+        const toolResult = findToolResult(llm);
+        expect(toolResult.content).toContain('Default: **deny**');
+    });
+
+    it('LLM ruft get_stats auf → tool_result enthält ## LLM + Token-Zahlen', async () => {
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_stats', {})], usage: { prompt: 10, completion: 5, total: 15 } },
+                { content: 'Stats geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Wie viele Tokens wurden verbraucht?' });
+        expect(r.status).toBe(200);
+        const toolResult = findToolResult(llm);
+        expect(toolResult.content).toContain('## LLM');
+        expect(toolResult.content).toContain('promptTokens');
+        expect(toolResult.content).toContain('10');
+    });
+
+    it('LLM ruft virtuelles Tool auf → ruft MCP NICHT auf (kein Netzwerk)', async () => {
+        const { llm, mcp } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', {})] },
+                { content: 'Config geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Zeig mir die Config' });
+        expect(r.status).toBe(200);
+        expect(mcp._state.callToolCalls).toHaveLength(0);
+        expect(llm._state.chatWithToolsCalls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('LLM ruft get_config auf → systemPrompt NICHT im tool_result', async () => {
+        const { llm } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', {})] },
+                { content: 'Config geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Zeig mir die Config' });
+        expect(r.status).toBe(200);
+        const toolResult = findToolResult(llm);
+        expect(toolResult.content).not.toContain('SYS');
+    });
+});
+
+describe('POST /api/chat/stream — virtuelle Tools', () => {
+    it('LLM ruft get_config auf → SSE: tool_call + tool_result + answer + done', async () => {
+        setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', {})] },
+                { content: 'Config geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat/stream', { question: 'Zeig mir die Config' });
+        expect(r.status).toBe(200);
+        expect(r.headers.get('content-type')).toMatch(/text\/event-stream/);
+        const text = await r.text();
+        const events = parseSSE(text);
+        const names = events.map((e) => e.event);
+        expect(names).toContain('tool_call');
+        expect(names).toContain('tool_result');
+        expect(names).toContain('answer');
+        expect(names[names.length - 1]).toBe('done');
+        // tool_call vor tool_result, tool_result vor answer
+        expect(names.indexOf('tool_call')).toBeLessThan(names.indexOf('tool_result'));
+        expect(names.indexOf('tool_result')).toBeLessThan(names.indexOf('answer'));
+        // tool_result enthält die Config-Markdown
+        const toolResultEvent = events.find((e) => e.event === 'tool_result');
+        expect(toolResultEvent.data.content).toContain('## LLM');
+    });
+
+    it('LLM ruft get_stats auf → tool_result enthält ## LLM', async () => {
+        setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_stats', {})], usage: { prompt: 10, completion: 5, total: 15 } },
+                { content: 'Stats geladen', toolCalls: [] },
+            ],
+        });
+        const r = await post('/api/chat/stream', { question: 'Wie viele Tokens?' });
+        expect(r.status).toBe(200);
+        const text = await r.text();
+        const events = parseSSE(text);
+        const toolResultEvent = events.find((e) => e.event === 'tool_result');
+        expect(toolResultEvent.data.content).toContain('## LLM');
+    });
+
+    it('nach Chat-Request → stats.llm.requests >= 1 (Stats-Erfassung)', async () => {
+        const { stats } = setupVirtualMocks({
+            llmTurns: [
+                { content: '', toolCalls: [toolCall('get_config', {})], usage: { prompt: 10, completion: 5, total: 15 } },
+                { content: 'Config geladen', toolCalls: [], usage: { prompt: 20, completion: 10, total: 30 } },
+            ],
+        });
+        const r = await post('/api/chat', { question: 'Zeig mir die Config' });
+        expect(r.status).toBe(200);
+        expect(stats.llm.requests).toBeGreaterThanOrEqual(1);
+        expect(stats.llm.totalTokens).toBeGreaterThanOrEqual(15);
+    });
+});
+
+describe('Conditional Injection', () => {
+    it('virtualTools.get_config=false → get_config NICHT in tools-Liste', async () => {
+        config.security = { virtualTools: { get_config: false } };
+        try {
+            const { llm } = setupVirtualMocks({
+                llmTurns: [{ content: 'OK', toolCalls: [] }],
+            });
+            await post('/api/chat', { question: 'hi' });
+            const tools = llm._state.chatWithToolsCalls[0].tools;
+            const names = tools.map((t) => t.function.name);
+            expect(names).not.toContain('get_config');
+            expect(names).toContain('get_mcp');
+            expect(names).toContain('get_policies');
+            expect(names).toContain('get_stats');
+        } finally {
+            delete config.security;
+        }
+    });
+
+    it('virtualTools.get_stats=false → get_stats NICHT in tools-Liste, andere Tools vorhanden', async () => {
+        config.security = { virtualTools: { get_stats: false } };
+        try {
+            const { llm } = setupVirtualMocks({
+                llmTurns: [{ content: 'OK', toolCalls: [] }],
+            });
+            await post('/api/chat', { question: 'hi' });
+            const tools = llm._state.chatWithToolsCalls[0].tools;
+            const names = tools.map((t) => t.function.name);
+            expect(names).not.toContain('get_stats');
+            expect(names).toContain('get_config');
+            expect(names).toContain('get_mcp');
+            expect(names).toContain('get_policies');
+        } finally {
+            delete config.security;
+        }
+    });
+
+    it('virtualTools={} (leer) → alle 4 Tools in tools-Liste (Default: aktiv)', async () => {
+        config.security = { virtualTools: {} };
+        try {
+            const { llm } = setupVirtualMocks({
+                llmTurns: [{ content: 'OK', toolCalls: [] }],
+            });
+            await post('/api/chat', { question: 'hi' });
+            const tools = llm._state.chatWithToolsCalls[0].tools;
+            const names = tools.map((t) => t.function.name);
+            expect(names).toContain('get_config');
+            expect(names).toContain('get_mcp');
+            expect(names).toContain('get_policies');
+            expect(names).toContain('get_stats');
+        } finally {
+            delete config.security;
         }
     });
 });

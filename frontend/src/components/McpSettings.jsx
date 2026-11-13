@@ -13,6 +13,14 @@ const EMPTY_FORM = { name: '', url: '', headers: '', enabled: true };
 export const POLICY_OPTIONS = ['read', 'write', 'execute', 'deny'];
 
 /**
+ * Eingebaute (virtuelle) Tools, server-seitig aufgelöst.
+ * Reihenfolge = Anzeigereihenfolge. Beschreibungen kommen aus i18n
+ * (`mcp.builtinTools.tools.<name>`), damit neue Tools nur hier ergänzt
+ * werden müssen.
+ */
+export const BUILTIN_TOOLS = ['get_config', 'get_mcp', 'get_policies', 'get_stats'];
+
+/**
  * Namespaced Policy-Key, identisch zum Server (McpManager-Namespace):
  * `${serverId}__${toolName}` (doppelter Unterstrich).
  * @param {string} serverId
@@ -113,6 +121,10 @@ export default function McpSettings({
   const [secError, setSecError] = useState(null);
   const [secSaved, setSecSaved] = useState(false);
 
+  // Eingebaute (virtuelle) Tools: { [name]: boolean }. Fehlt ein Eintrag →
+  // aktiv (Server-Default: `flags[name] !== false`).
+  const [builtinTools, setBuiltinTools] = useState({});
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -138,7 +150,8 @@ export default function McpSettings({
       .catch(() => setToolSupport(null));
   }, []);
 
-  // Security-Settings laden (Policies + SSRF-Allowlist), nur ohne Test-Props.
+  // Security-Settings laden (Policies + SSRF-Allowlist + Built-in-Tools),
+  // nur ohne Test-Props.
   useEffect(() => {
     if (policiesProp !== undefined) return undefined;
     let cancelled = false;
@@ -146,6 +159,7 @@ export default function McpSettings({
       .then((data) => {
         if (cancelled) return;
         setPolicies({ ...(data?.security?.toolPolicies || {}) });
+        setBuiltinTools({ ...(data?.security?.virtualTools || {}) });
         const hosts = data?.security?.allowedHosts;
         if (Array.isArray(hosts)) {
           setHostsDraft(hosts.join(', '));
@@ -334,6 +348,27 @@ export default function McpSettings({
     }
   };
 
+  /**
+   * Built-in-Tool umschalten → optimistischer Update + sofortiger Save.
+   * Der Server ersetzt `security.virtualTools` vollständig → komplette Map senden.
+   * Fehlt ein Eintrag → aktiv (Server-Default `flags[name] !== false`).
+   */
+  const handleBuiltinToggle = async (name) => {
+    const currentlyEnabled = builtinTools[name] !== false;
+    const prev = builtinTools;
+    const next = { ...builtinTools, [name]: !currentlyEnabled };
+    setBuiltinTools(next);
+    setSecSaved(false);
+    setSecError(null);
+    try {
+      await updateSettings({ security: { virtualTools: next } });
+      setSecSaved(true);
+    } catch (err) {
+      setBuiltinTools(prev); // Rollback: Änderung hat nicht gewirkt
+      setSecError(err.message);
+    }
+  };
+
   const statusClass = (status) =>
     status === 'connected' ? 'mcp__status--ok'
       : status === 'error' ? 'mcp__status--error'
@@ -368,6 +403,34 @@ export default function McpSettings({
       {!loading && servers.length > 0 && toolSupport === false && (
         <p className="mcp__warning">{t('mcp.noToolSupport')}</p>
       )}
+
+      <section className="mcp__builtin">
+        <h4>{t('mcp.builtinTools.title')}</h4>
+        <p className="mcp__builtin-hint">{t('mcp.builtinTools.hint')}</p>
+        <ul className="mcp__builtin-list">
+          {BUILTIN_TOOLS.map((name) => {
+            const enabled = builtinTools[name] !== false;
+            return (
+              <li key={name} className="mcp__builtin-item">
+                <div className="mcp__builtin-item-info">
+                  <code>{name}</code>
+                  <span className="mcp__builtin-desc">
+                    {t(`mcp.builtinTools.tools.${name}`)}
+                  </span>
+                </div>
+                <label className="mcp__builtin-toggle">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => handleBuiltinToggle(name)}
+                  />
+                  <span>{enabled ? t('mcp.builtinTools.enabled') : t('mcp.builtinTools.disabled')}</span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
       <section className="mcp__ssrf">
         <h4>{t('mcp.ssrf.title')}</h4>

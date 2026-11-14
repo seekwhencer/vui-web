@@ -108,6 +108,37 @@
     "uiHint": "Applicato immediatamente e salvato localmente",
     "securityHint": "Le modifiche si applicano immediatamente",
     "loading": "Caricamento…",
+    "categories": {
+      "app": "App",
+      "asr": "ASR",
+      "llm": "LLM",
+      "ui": "UI",
+      "mcp": "MCP"
+    },
+    "sub": {
+      "connection": "Connessione",
+      "prompt": "Prompt",
+      "servers": "Server",
+      "builtin": "Strumenti integrati",
+      "ssrf": "SSRF"
+    },
+    "app": {
+      "title": "App",
+      "placeholder": "Le impostazioni dell'app appariranno qui.",
+      "media": {
+        "title": "Media",
+        "dir": "Percorso media",
+        "dirHint": "Vuoto = predefinito (server/data/media). Le modifiche richiedono un riavvio.",
+        "imageTtlDays": "TTL immagini (giorni)",
+        "imageTtlDaysHint": "0 = le immagini non scadono mai.",
+        "maxImages": "Numero massimo di immagini",
+        "maxImagesHint": "0 = illimitato.",
+        "maxBytes": "Spazio massimo (byte)",
+        "maxBytesHint": "0 = illimitato. Predefinito: 524288000 (500 MB).",
+        "cleanupIntervalMs": "Intervallo di pulizia (ms)",
+        "cleanupIntervalMsHint": "Min. 60000 (1 minuto)."
+      }
+    },
     "sections": {
       "basic": "Base",
       "decoding": "Decodifica",

@@ -43,6 +43,35 @@ describe('ChatImage (Rendering)', () => {
   });
 });
 
+describe('ChatImage (url)', () => {
+  it('rendert ein <img> mit url als src', () => {
+    const html = renderToString(
+      <ChatImage mimeType="image/png" url="/api/media/abc-123" onOpen={() => {}} />
+    );
+
+    expect(html).toContain('<img');
+    expect(html).toContain('src="/api/media/abc-123"');
+    expect(html).not.toContain('src="data:');
+  });
+
+  it('url + data → url gewinnt', () => {
+    const html = renderToString(
+      <ChatImage {...IMAGE} url="/api/media/abc-123" onOpen={() => {}} />
+    );
+
+    expect(html).toContain('src="/api/media/abc-123"');
+    expect(html).not.toContain('src="data:image/png;base64,aW1hZ2U="');
+  });
+
+  it('kein url, kein data → Fehler-Box statt <img>', () => {
+    const html = renderToString(<ChatImage mimeType="image/png" onOpen={() => {}} />);
+
+    expect(html).toContain('msg__image--error');
+    expect(html).toContain('Image could not be loaded.');
+    expect(html).not.toContain('<img');
+  });
+});
+
 describe('ChatImage (i18n)', () => {
   it('löst Alt-Text und Fehlermeldung auf Deutsch auf', async () => {
     await i18n.changeLanguage('de');

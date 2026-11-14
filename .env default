@@ -32,6 +32,14 @@ TTS_GALLERIES=[{"name":"localai", "url":"github:mudler/LocalAI/gallery/index.yam
 LLM_HOST=
 LLM_PORT=
 
+# --- Media (Bild-Persistierung von MCP-Tool-Ergebnissen) ---
+# Leere Werte = Defaults (siehe README, Abschnitt "Media").
+# MEDIA_DIR=                         # leer = server/data/media (Neustart nötig)
+# MEDIA_IMAGE_TTL_DAYS=30            # 0 = Bilder verfallen nie
+# MEDIA_MAX_IMAGES=500               # 0 = unbegrenzt
+# MEDIA_MAX_BYTES=524288000          # 0 = unbegrenzt (Default: 500 MB)
+# MEDIA_CLEANUP_INTERVAL_MS=3600000  # min. 60000 (1 Minute)
+
 VITE_WS_HOST=localhost
 
 

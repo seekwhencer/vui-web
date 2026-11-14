@@ -4,8 +4,8 @@ import { Plus, Pencil, Trash2, RefreshCw, Power, ToolCase } from 'lucide-react';
 import {
   listMcpServers, addMcpServer, updateMcpServer,
   removeMcpServer, reconnectMcpServer, listMcpTools, getMcpCapability,
-} from '../api/mcp.js';
-import { getSettings, updateSettings } from '../api/settings.js';
+} from '../../api/mcp.js';
+import { getSettings, updateSettings } from '../../api/settings.js';
 
 const EMPTY_FORM = { name: '', url: '', headers: '', enabled: true };
 
@@ -67,21 +67,28 @@ export function matchesToolFilter(tool, serverId, policies, filter) {
 }
 
 /**
- * MCP-Tab in der Settings-Seite.
+ * MCP-Kategorie in der Settings-Seite.
  *
- * CRUD-UI (Add / Edit / Delete, Enable/Disable, Reconnect) + Tool-Policies
- * (deny-by-default) pro Tool + SSRF-Allowlist. Änderungen wirken sofort:
- * Server-CRUD über die dedizierten /api/mcp/*-Endpunkte, Policies +
- * SSRF-Allowlist über PUT /api/settings (security.toolPolicies /
- * security.allowedHosts).
+ * Drei Sub-Views (über `view`):
+ * - 'servers' → CRUD-UI (Add / Edit / Delete, Enable/Disable, Reconnect)
+ *   + Tool-Policies (deny-by-default) pro Tool.
+ * - 'builtin' → Eingebaute (virtuelle) Tools umschalten.
+ * - 'ssrf'    → SSRF-Allowlist (erlaubte Hosts).
  *
- * Props (optional, für Tests — überspringen das Fetchen):
- * - servers      → [{ id, name, ... }]
+ * Änderungen wirken sofort: Server-CRUD über die dedizierten /api/mcp/*-
+ * Endpunkte, Policies + SSRF-Allowlist + Built-in-Tools über PUT
+ * /api/settings (security.toolPolicies / security.allowedHosts /
+ * security.virtualTools).
+ *
+ * Props:
+ * - view         → 'servers' | 'builtin' | 'ssrf' (Default 'servers')
+ * - servers      → [{ id, name, ... }] (Test — überspringt das Fetchen)
  * - tools        → { [serverId]: [{ name, description? }] }
  * - policies     → { [serverId__toolName]: 'read'|'write'|'execute'|'deny' }
  * - allowedHosts → string[] (SSRF-Whitelist)
  */
 export default function McpSettings({
+  view = 'servers',
   servers: serversProp,
   tools: toolsProp,
   policies: policiesProp,
@@ -375,26 +382,24 @@ export default function McpSettings({
         : status === 'disabled' ? 'mcp__status--disabled'
           : 'mcp__status--off';
 
-  return (
-    <div className="mcp">
-      <div className="mcp__header">
-        <div className="mcp__header-title">
+  // --- Sub-View: Server (CRUD + Tool-Policies) ---
+  const serversView = (
+    <>
+      <div className="settings__panel-header">
+        <div className="settings__panel-header-title">
           <h3>{t('mcp.title')}</h3>
-          {secSaved && !secError && (
-            <p className="mcp__saved" role="status">{t('mcp.policy.saved')}</p>
-          )}
         </div>
-        <button type="button" className="btn btn--primary" onClick={openAdd}>
+        <button type="button" className="btn btn--primary btn--sm" onClick={openAdd}>
           <Plus size={16} /><span>{t('mcp.add')}</span>
         </button>
       </div>
 
-      <p className="mcp__policy-hint">{t('mcp.policy.hint')}</p>
+      <p className="settings__hint">{t('mcp.policy.hint')}</p>
 
-      {error && <p className="mcp__error">{error}</p>}
-      {secError && <p className="mcp__error" role="alert">{secError}</p>}
-      {loading && <p className="mcp__loading">{t('mcp.loading')}</p>}
-      {secLoading && <p className="mcp__loading">{t('mcp.policy.loading')}</p>}
+      {error && <p className="settings__error">{error}</p>}
+      {secError && <p className="settings__error" role="alert">{secError}</p>}
+      {loading && <p className="settings__loading">{t('mcp.loading')}</p>}
+      {secLoading && <p className="settings__loading">{t('mcp.policy.loading')}</p>}
 
       {!loading && servers.length === 0 && (
         <p className="mcp__empty">{t('mcp.empty')}</p>
@@ -403,55 +408,6 @@ export default function McpSettings({
       {!loading && servers.length > 0 && toolSupport === false && (
         <p className="mcp__warning">{t('mcp.noToolSupport')}</p>
       )}
-
-      <section className="mcp__builtin">
-        <h4>{t('mcp.builtinTools.title')}</h4>
-        <p className="mcp__builtin-hint">{t('mcp.builtinTools.hint')}</p>
-        <ul className="mcp__builtin-list">
-          {BUILTIN_TOOLS.map((name) => {
-            const enabled = builtinTools[name] !== false;
-            return (
-              <li key={name} className="mcp__builtin-item">
-                <div className="mcp__builtin-item-info">
-                  <code>{name}</code>
-                  <span className="mcp__builtin-desc">
-                    {t(`mcp.builtinTools.tools.${name}`)}
-                  </span>
-                </div>
-                <label className="mcp__builtin-toggle">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={() => handleBuiltinToggle(name)}
-                  />
-                  <span>{enabled ? t('mcp.builtinTools.enabled') : t('mcp.builtinTools.disabled')}</span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      <section className="mcp__ssrf">
-        <h4>{t('mcp.ssrf.title')}</h4>
-        <p className="mcp__ssrf-hint">{t('mcp.ssrf.hint')}</p>
-        <label className="settings__field">
-          <span>{t('mcp.ssrf.label')}</span>
-          <input
-            type="text"
-            value={hostsDraft}
-            placeholder="host-one, host-two"
-            onChange={(e) => {
-              setSecSaved(false);
-              setHostsDraft(e.target.value);
-            }}
-            onBlur={(e) => commitHosts(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitHosts(e.target.value);
-            }}
-          />
-        </label>
-      </section>
 
       <ul className="mcp__list">
         {servers.map((s) => (
@@ -510,125 +466,123 @@ export default function McpSettings({
               </form>
             ) : (
               <>
-            <div className="mcp__item-head">
-              <span className={`mcp__status ${statusClass(s.status)}`}>
-                {t(`mcp.status.${s.status}`)}
-              </span>
-              <strong>{s.name}</strong>
-              <code className="mcp__cmd">{s.url}</code>
-              <span className="mcp__tools-count">{s.toolCount} {t('mcp.tools')}</span>
-            </div>
+                <div className="mcp__item-head">
+                  <span className={`mcp__status ${statusClass(s.status)}`}>
+                    {t(`mcp.status.${s.status}`)}
+                  </span>
+                  <strong>{s.name}</strong>
+                  <code className="mcp__cmd">{s.url}</code>
+                  <span className="mcp__tools-count">{s.toolCount} {t('mcp.tools')}</span>
+                </div>
 
-            <div className="mcp__item-actions">
-              <button
-                type="button"
-                className={`btn btn--xs btn--secondary ${expandedTools[s.id] ? 'is-active' : ''}`}
-                aria-expanded={Boolean(expandedTools[s.id])}
-                onClick={() => toggleTools(s.id)}
-              >
-                <ToolCase size={16} /><span>{t('mcp.showTools')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
-                <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleReconnect(s.id)}>
-                <RefreshCw size={16} /><span>{t('mcp.reconnect')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
-                <Pencil size={16} /><span>{t('mcp.edit')}</span>
-              </button>
-              <button type="button" className="btn btn--xs btn--stop" onClick={() => handleDelete(s.id)}>
-                <Trash2 size={16} /><span>{t('mcp.delete')}</span>
-              </button>
-            </div>
-
-            {s.error && <p className="mcp__item-error">{s.error}</p>}
-
-            {expandedTools[s.id] && (
-              <>
-                <div className="mcp__tool-filter">
-                  <div
-                    className="mcp__tool-filter-policies"
-                    role="group"
-                    aria-label={t('mcp.filter.title')}
-                  >
-                    {POLICY_OPTIONS.map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        className={`btn btn--xs ${getToolFilter(s.id).policy === opt ? 'btn--primary' : 'btn--secondary'}`}
-                        aria-pressed={getToolFilter(s.id).policy === opt}
-                        onClick={() => togglePolicyFilter(s.id, opt)}
-                      >
-                        <span>{t(`mcp.policy.options.${opt}`)}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="text"
-                    className="mcp__tool-filter-input"
-                    placeholder={t('mcp.filter.keyword')}
-                    value={getToolFilter(s.id).keyword}
-                    onChange={(e) => setKeywordFilter(s.id, e.target.value)}
-                  />
+                <div className="mcp__item-actions">
                   <button
                     type="button"
-                    className="btn btn--xs btn--secondary"
-                    onClick={() => resetToolFilter(s.id)}
-                    disabled={!toolFilterActive(s.id)}
+                    className={`btn btn--xs btn--secondary ${expandedTools[s.id] ? 'is-active' : ''}`}
+                    aria-expanded={Boolean(expandedTools[s.id])}
+                    onClick={() => toggleTools(s.id)}
                   >
-                    <span>{t('mcp.filter.reset')}</span>
+                    <ToolCase size={16} /><span>{t('mcp.showTools')}</span>
+                  </button>
+                  <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleToggle(s)}>
+                    <Power size={16} /><span>{s.enabled ? t('mcp.disable') : t('mcp.enable')}</span>
+                  </button>
+                  <button type="button" className="btn btn--xs btn--secondary" onClick={() => handleReconnect(s.id)}>
+                    <RefreshCw size={16} /><span>{t('mcp.reconnect')}</span>
+                  </button>
+                  <button type="button" className="btn btn--xs btn--secondary" onClick={() => openEdit(s)}>
+                    <Pencil size={16} /><span>{t('mcp.edit')}</span>
+                  </button>
+                  <button type="button" className="btn btn--xs btn--stop" onClick={() => handleDelete(s.id)}>
+                    <Trash2 size={16} /><span>{t('mcp.delete')}</span>
                   </button>
                 </div>
 
-                {visibleTools(s.id).length > 0 ? (
-                  <ul className="mcp__tools">
-                    {visibleTools(s.id).map((tool) => {
-                      const key = policyKey(s.id, tool.name);
-                      const value = policies[key] ?? 'deny';
-                      const isDefault = policies[key] === undefined;
-                      return (
-                        <li key={tool.name} className="mcp__tool">
-                          <div className="mcp__tool-head">
-                            <code>{tool.name}</code>
-                            {isDefault && (
-                              <span className="mcp__policy-default">
-                                {t('mcp.policy.default')}
-                              </span>
-                            )}
-                            <label className="mcp__policy">
-                              <span>{t('mcp.policy.label')}</span>
-                              <select
-                                value={value}
-                                onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
-                              >
-                                {POLICY_OPTIONS.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {t(`mcp.policy.options.${opt}`)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                          {tool.description && (
-                            <span className="mcp__tool-desc">{tool.description}</span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="mcp__filter-empty">{t('mcp.filter.empty')}</p>
+                {s.error && <p className="mcp__item-error">{s.error}</p>}
+
+                {expandedTools[s.id] && (
+                  <>
+                    <div className="mcp__tool-filter">
+                      <div
+                        className="mcp__tool-filter-policies"
+                        role="group"
+                        aria-label={t('mcp.filter.title')}
+                      >
+                        {POLICY_OPTIONS.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            className={`btn btn--xs ${getToolFilter(s.id).policy === opt ? 'btn--primary' : 'btn--secondary'}`}
+                            aria-pressed={getToolFilter(s.id).policy === opt}
+                            onClick={() => togglePolicyFilter(s.id, opt)}
+                          >
+                            <span>{t(`mcp.policy.options.${opt}`)}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        className="mcp__tool-filter-input"
+                        placeholder={t('mcp.filter.keyword')}
+                        value={getToolFilter(s.id).keyword}
+                        onChange={(e) => setKeywordFilter(s.id, e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--xs btn--secondary"
+                        onClick={() => resetToolFilter(s.id)}
+                        disabled={!toolFilterActive(s.id)}
+                      >
+                        <span>{t('mcp.filter.reset')}</span>
+                      </button>
+                    </div>
+
+                    {visibleTools(s.id).length > 0 ? (
+                      <ul className="mcp__tools">
+                        {visibleTools(s.id).map((tool) => {
+                          const key = policyKey(s.id, tool.name);
+                          const value = policies[key] ?? 'deny';
+                          const isDefault = policies[key] === undefined;
+                          return (
+                            <li key={tool.name} className="mcp__tool">
+                              <div className="mcp__tool-head">
+                                <code>{tool.name}</code>
+                                {isDefault && (
+                                  <span className="mcp__policy-default">
+                                    {t('mcp.policy.default')}
+                                  </span>
+                                )}
+                                <label className="mcp__policy">
+                                  <span>{t('mcp.policy.label')}</span>
+                                  <select
+                                    value={value}
+                                    onChange={(e) => handlePolicyChange(s.id, tool.name, e.target.value)}
+                                  >
+                                    {POLICY_OPTIONS.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {t(`mcp.policy.options.${opt}`)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              {tool.description && (
+                                <span className="mcp__tool-desc">{tool.description}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="mcp__filter-empty">{t('mcp.filter.empty')}</p>
+                    )}
+                  </>
                 )}
-              </>
-            )}
               </>
             )}
           </li>
         ))}
       </ul>
-
-
 
       {addForm && (
         <form className="mcp__form" onSubmit={handleAddSubmit}>
@@ -680,7 +634,80 @@ export default function McpSettings({
           </div>
         </form>
       )}
-    </div>
+    </>
+  );
+
+  // --- Sub-View: Eingebaute (virtuelle) Tools ---
+  const builtinView = (
+    <>
+      <h3 className="mcp__builtin">{t('mcp.builtinTools.title')}</h3>
+      <p className="mcp__builtin-hint">{t('mcp.builtinTools.hint')}</p>
+      <ul className="mcp__builtin-list">
+        {BUILTIN_TOOLS.map((name) => {
+          const enabled = builtinTools[name] !== false;
+          return (
+            <li key={name} className="mcp__builtin-item">
+              <div className="mcp__builtin-item-info">
+                <code>{name}</code>
+                <span className="mcp__builtin-desc">
+                  {t(`mcp.builtinTools.tools.${name}`)}
+                </span>
+              </div>
+              <label className="mcp__builtin-toggle">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={() => handleBuiltinToggle(name)}
+                />
+                <span>{enabled ? t('mcp.builtinTools.enabled') : t('mcp.builtinTools.disabled')}</span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+
+  // --- Sub-View: SSRF-Allowlist ---
+  const ssrfView = (
+    <>
+      <h3 className="mcp__ssrf">{t('mcp.ssrf.title')}</h3>
+      <p className="settings__hint">{t('mcp.ssrf.hint')}</p>
+      <label className="settings__field">
+        <span>{t('mcp.ssrf.label')}</span>
+        <input
+          type="text"
+          value={hostsDraft}
+          placeholder="host-one, host-two"
+          onChange={(e) => {
+            setSecSaved(false);
+            setHostsDraft(e.target.value);
+          }}
+          onBlur={(e) => commitHosts(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitHosts(e.target.value);
+          }}
+        />
+      </label>
+    </>
+  );
+
+  return (
+    <>
+      <div className="settings__body">
+        <div className="settings__panel">
+          {view === 'builtin' ? builtinView
+            : view === 'ssrf' ? ssrfView
+              : serversView}
+        </div>
+      </div>
+      <div className="settings__footer">
+        <span className="settings__saved">{t('mcp.hint')}</span>
+        {secSaved && !secError && (
+          <span className="settings__saved" role="status">{t('mcp.policy.saved')}</span>
+        )}
+      </div>
+    </>
   );
 }
 

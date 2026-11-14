@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 
-vi.mock('../api/settings.js', () => ({
+vi.mock('../../api/settings.js', () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
 }));
 
-import i18n from '../i18n.js';
+import i18n from '../../i18n.js';
 import SecuritySettings, {
   SECURITY_FIELDS,
   buildSecurityPatch,

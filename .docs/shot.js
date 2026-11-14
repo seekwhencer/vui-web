@@ -117,52 +117,116 @@ async function shot(page, file) {
     await page.waitForTimeout(900);
     await shot(page, path.join(OUT, `chat-${theme}.png`));
 
-    // 3) Settings page: one screenshot per tab (incl. the frontend-only "UI" tab)
+    // 2b) Chat screen, second round: new chat, ask for a screenshot of the app itself
+    await page.locator('.chat-history__new').click({ timeout: 15000 });
+    await chatTextarea.waitFor({ timeout: 15000 });
+    await chatTextarea.fill('mache ein screenshot von http://localhost:3000');
+    await sendBtn.click({ timeout: 15000 });
+
+    await page.locator('.chat-input .btn--stop').waitFor({ timeout: 30000 });
+    await sendBtn.waitFor({ timeout: 120000 });
+
+    await page.waitForFunction(
+      () => {
+        const bubbles = document.querySelectorAll('.msg--assistant .msg__bubble');
+        const last = bubbles[bubbles.length - 1];
+        return last && last.textContent.trim().length > 0;
+      },
+      null,
+      { timeout: 30000 }
+    );
+
+    await page.evaluate(() => {
+      const el = document.querySelector('.chat-view');
+      if (el) {
+        el.style.scrollBehavior = 'auto';
+        el.scrollTop = 0;
+      }
+    });
+    await page.waitForTimeout(900);
+    await shot(page, path.join(OUT, `chat2-${theme}.png`));
+
+    // 3) Settings page: two-level tabs (categories + sub-views), one screenshot each
+    //    Mirrors CATEGORIES in frontend/src/pages/SettingsPage.jsx.
+    const CATEGORIES = [
+      { id: 'app', subs: [] },
+      { id: 'asr', subs: ['basic', 'decoding', 'thresholds', 'context', 'vad', 'badwords'] },
+      { id: 'llm', subs: ['connection', 'prompt', 'security'] },
+      { id: 'mcp', subs: ['servers', 'builtin', 'ssrf'] },
+      { id: 'ui', subs: [] },
+    ];
+
     await goto(page, BASE + '/settings');
-    const settingsTab = page.locator('.settings__tab');
-    await settingsTab.first().waitFor({ timeout: 15000 });
-    const expectedTabs = ['basic', 'decoding', 'thresholds', 'context', 'vad', 'llm', 'badwords', 'mcp', 'ui'];
-    const tabCount = await settingsTab.count();
-    if (tabCount !== expectedTabs.length) {
-      throw new Error(`Expected ${expectedTabs.length} settings tabs (${expectedTabs.join(', ')}), found ${tabCount}`);
+    const topTabs = page.locator('.settings__tabs:not(.settings__tabs--sub) .settings__tab');
+    await topTabs.first().waitFor({ timeout: 15000 });
+    const topCount = await topTabs.count();
+    if (topCount !== CATEGORIES.length) {
+      throw new Error(`Expected ${CATEGORIES.length} settings categories (${CATEGORIES.map((c) => c.id).join(', ')}), found ${topCount}`);
     }
-    for (let i = 0; i < tabCount; i++) {
-      await settingsTab.nth(i).click();
+
+    for (let ci = 0; ci < CATEGORIES.length; ci++) {
+      const cat = CATEGORIES[ci];
+      await topTabs.nth(ci).click();
       await page.waitForFunction(
-        (idx) => document.querySelectorAll('.settings__tab')[idx]?.classList.contains('settings__tab--active'),
-        i,
+        (idx) => {
+          const tabs = document.querySelectorAll('.settings__tabs:not(.settings__tabs--sub) .settings__tab');
+          return tabs[idx]?.classList.contains('settings__tab--active');
+        },
+        ci,
         { timeout: 15000 }
       );
       await page.waitForTimeout(400);
-      const label = (await settingsTab.nth(i).innerText())
-        .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      await shot(page, path.join(OUT, `settings-${label}-${theme}.png`));
 
-      if (label === 'mcp') {
-        const firstItem = page.locator('.mcp__item').first();
-        if ((await page.locator('.mcp__item').count()) === 0) {
-          log('WARN: no MCP servers configured, skipping mcp-tools screenshots');
-        } else {
-          // Expand the tools of the first MCP server.
-          await firstItem.locator('button[aria-expanded]').first().click();
-          await firstItem.locator('.mcp__tool-filter').waitFor({ timeout: 15000 });
-          await page.waitForTimeout(400);
-          await shot(page, path.join(OUT, `settings-mcp-tools-${theme}.png`));
+      if (cat.subs.length === 0) {
+        await shot(page, path.join(OUT, `settings-${cat.id}-${theme}.png`));
+        continue;
+      }
 
-          // Apply the "deny" policy filter (4th button: read, write, execute, deny).
-          const denyBtn = firstItem.locator('.mcp__tool-filter-policies .btn').nth(3);
-          await denyBtn.click();
-          await page.waitForFunction(
-            () => {
-              const item = document.querySelector('.mcp__item');
-              const btns = item?.querySelectorAll('.mcp__tool-filter-policies .btn') || [];
-              return btns[3]?.getAttribute('aria-pressed') === 'true';
-            },
-            null,
-            { timeout: 15000 }
-          );
-          await page.waitForTimeout(400);
-          await shot(page, path.join(OUT, `settings-mcp-tools-deny-${theme}.png`));
+      const subTabs = page.locator('.settings__tabs--sub .settings__tab');
+      const subCount = await subTabs.count();
+      if (subCount !== cat.subs.length) {
+        throw new Error(`Expected ${cat.subs.length} sub-tabs for "${cat.id}" (${cat.subs.join(', ')}), found ${subCount}`);
+      }
+      for (let si = 0; si < cat.subs.length; si++) {
+        const sub = cat.subs[si];
+        await subTabs.nth(si).click();
+        await page.waitForFunction(
+          (idx) => {
+            const tabs = document.querySelectorAll('.settings__tabs--sub .settings__tab');
+            return tabs[idx]?.classList.contains('settings__tab--active');
+          },
+          si,
+          { timeout: 15000 }
+        );
+        await page.waitForTimeout(400);
+        await shot(page, path.join(OUT, `settings-${cat.id}-${sub}-${theme}.png`));
+
+        if (cat.id === 'mcp' && sub === 'servers') {
+          const firstItem = page.locator('.mcp__item').first();
+          if ((await page.locator('.mcp__item').count()) === 0) {
+            log('WARN: no MCP servers configured, skipping mcp-tools screenshots');
+          } else {
+            // Expand the tools of the first MCP server.
+            await firstItem.locator('button[aria-expanded]').first().click();
+            await firstItem.locator('.mcp__tool-filter').waitFor({ timeout: 15000 });
+            await page.waitForTimeout(400);
+            await shot(page, path.join(OUT, `settings-mcp-tools-${theme}.png`));
+
+            // Apply the "deny" policy filter (4th button: read, write, execute, deny).
+            const denyBtn = firstItem.locator('.mcp__tool-filter-policies .btn').nth(3);
+            await denyBtn.click();
+            await page.waitForFunction(
+              () => {
+                const item = document.querySelector('.mcp__item');
+                const btns = item?.querySelectorAll('.mcp__tool-filter-policies .btn') || [];
+                return btns[3]?.getAttribute('aria-pressed') === 'true';
+              },
+              null,
+              { timeout: 15000 }
+            );
+            await page.waitForTimeout(400);
+            await shot(page, path.join(OUT, `settings-mcp-tools-deny-${theme}.png`));
+          }
         }
       }
     }

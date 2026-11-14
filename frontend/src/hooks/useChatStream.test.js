@@ -116,6 +116,40 @@ describe('tool_result-Event (images)', () => {
     expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
   });
 
+  it('tool_result mit images im neuen Format ({ id, mimeType, url, size }) → result.images gefüllt', async () => {
+    chatStream.mockImplementation(sse([
+      {
+        event: 'tool_result',
+        data: {
+          id: 'call-1',
+          content: 'ok',
+          isError: false,
+          images: [{ id: 'img-1', mimeType: 'image/png', url: '/api/images/abc', size: 1234 }],
+        },
+      },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: { tokens: null, model: null } },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.error).toBeNull();
+    expect(result.images).toEqual([{ id: 'img-1', mimeType: 'image/png', url: '/api/images/abc', size: 1234 }]);
+  });
+
+  it('doppelte Bilder (gleiche url) → nur einmal gesammelt (Dedup)', async () => {
+    chatStream.mockImplementation(sse([
+      { event: 'tool_result', data: { id: 'call-1', content: 'a', images: [{ id: 'img-1', mimeType: 'image/png', url: '/api/images/abc', size: 1234 }] } },
+      { event: 'tool_result', data: { id: 'call-2', content: 'b', images: [{ id: 'img-1', mimeType: 'image/png', url: '/api/images/abc', size: 1234 }] } },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: {} },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.images).toEqual([{ id: 'img-1', mimeType: 'image/png', url: '/api/images/abc', size: 1234 }]);
+  });
+
   it('tool_result ohne images → images bleibt []', async () => {
     chatStream.mockImplementation(sse([
       { event: 'tool_result', data: { id: 'call-1', content: 'ok', isError: false } },

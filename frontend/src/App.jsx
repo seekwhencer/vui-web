@@ -38,7 +38,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<TranscriptionPage />} />
         <Route path="/chat" element={<ChatPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/:category?/:sub?" element={<SettingsPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

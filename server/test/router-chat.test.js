@@ -2,7 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import express from 'express';
 import { createServer as createHttpServer } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Router } from '../src/Router/index.js';
+import { MediaStore } from '../src/MediaStore.js';
 import { Stats } from '../src/Stats.js';
 
 // FrontendRouter.init() startet Vite, wenn NODE_ENV=development.
@@ -587,6 +591,137 @@ describe('Conditional Injection', () => {
             expect(names).toContain('get_stats');
         } finally {
             delete config.security;
+        }
+    });
+});
+
+// ── Media (Phase 2): Bild-Persistierung + GET /api/media/:id ──
+
+describe('Media (Phase 2)', () => {
+    const pngBase64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]).toString('base64');
+
+    let mediaDir, mediaStore, mediaAppHttpServer, mediaAppPort;
+
+    /** Mock-MCP, der ein Bild zurückgibt (srv__shot). */
+    function makeImageMcp() {
+        return {
+            listServers: () => [],
+            connections: new Map(),
+            toOpenAITools: () => [{ type: 'function', function: { name: 'srv__shot', description: 'Screenshot', parameters: { type: 'object', properties: {} } } }],
+            parseToolName: (name) => (name === 'srv__shot' ? { serverId: 'srv', toolName: 'shot' } : null),
+            callTool: async () => ({ content: 'ok', isError: false, images: [{ mimeType: 'image/png', data: pngBase64 }] }),
+            connectAll: async () => { },
+        };
+    }
+
+    /** Mock-Llm: 1. Turn ruft srv__shot auf, 2. Turn ist die finale Antwort. */
+    function makeShotLlm() {
+        return makeMockLlm({
+            turns: [
+                { content: '', toolCalls: [toolCall('srv__shot', {})] },
+                { content: 'Fertig', toolCalls: [] },
+            ],
+        });
+    }
+
+    /** Startet eine isolierte app+router-Kombination mit dem angegebenen mediaStore. */
+    async function startMediaRouter(store) {
+        const app = express();
+        const httpServer = createHttpServer(app);
+        const router = new Router(config, httpServer, silent, null, makeImageMcp(), null, store);
+        router.llm = makeShotLlm();
+        await router.define();
+        app.use(router.router);
+        await new Promise((r) => httpServer.listen(0, '127.0.0.1', r));
+        return { httpServer, port: httpServer.address().port };
+    }
+
+    async function stopMediaServer(httpServer) {
+        httpServer.closeAllConnections?.();
+        await new Promise((r) => httpServer.close(r));
+    }
+
+    beforeAll(async () => {
+        mediaDir = mkdtempSync(join(tmpdir(), 'vui-media-test-'));
+        mediaStore = new MediaStore({
+            config: { media: { dir: mediaDir, imageTtlDays: 0, maxImages: 0, maxBytes: 0 } },
+            logger: silent,
+        });
+        const s = await startMediaRouter(mediaStore);
+        mediaAppHttpServer = s.httpServer;
+        mediaAppPort = s.port;
+    });
+
+    afterAll(async () => {
+        await stopMediaServer(mediaAppHttpServer);
+        rmSync(mediaDir, { recursive: true, force: true });
+    });
+
+    it('GET /api/media/:id → 200 + Bild-Bytes + Header', async () => {
+        const saved = mediaStore.save('image/png', pngBase64);
+        const r = await fetch(`http://127.0.0.1:${mediaAppPort}/api/media/${saved.id}`);
+        expect(r.status).toBe(200);
+        expect(r.headers.get('content-type')).toBe('image/png');
+        expect(r.headers.get('content-length')).toBe(String(saved.size));
+        expect(r.headers.get('cache-control')).toMatch(/immutable/);
+        const body = Buffer.from(await r.arrayBuffer());
+        expect(body.equals(Buffer.from(pngBase64, 'base64'))).toBe(true);
+    });
+
+    it('GET /api/media/:id (ungültige ID) → 404 JSON', async () => {
+        const r = await fetch(`http://127.0.0.1:${mediaAppPort}/api/media/not-a-uuid`);
+        expect(r.status).toBe(404);
+        const j = await r.json();
+        expect(j.success).toBe(false);
+        expect(j.code).toBe('media_not_found');
+    });
+
+    it('Streaming: tool_result → images mit url (nicht data)', async () => {
+        const r = await fetch(`http://127.0.0.1:${mediaAppPort}/api/chat/stream`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ question: 'Screenshot' }),
+        });
+        expect(r.status).toBe(200);
+        const events = parseSSE(await r.text());
+        const toolResult = events.find((e) => e.event === 'tool_result');
+        expect(toolResult).toBeDefined();
+        expect(toolResult.data.images).toHaveLength(1);
+        const img = toolResult.data.images[0];
+        expect(img.url).toMatch(/^\/api\/media\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+        expect(img.data).toBeUndefined();
+        expect(img.mimeType).toBe('image/png');
+        // Persistierte Datei muss über die Media-Route abrufbar sein.
+        const id = img.url.split('/').pop();
+        const mediaRes = await fetch(`http://127.0.0.1:${mediaAppPort}/api/media/${id}`);
+        expect(mediaRes.status).toBe(200);
+        const body = Buffer.from(await mediaRes.arrayBuffer());
+        expect(body.equals(Buffer.from(pngBase64, 'base64'))).toBe(true);
+    });
+
+    it('Fallback: save() schlägt fehl → inline Data (Legacy-Format)', async () => {
+        const failingStore = {
+            save: () => { throw new Error('disk full'); },
+            get: () => null,
+        };
+        const s = await startMediaRouter(failingStore);
+        try {
+            const r = await fetch(`http://127.0.0.1:${s.port}/api/chat/stream`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ question: 'Screenshot' }),
+            });
+            expect(r.status).toBe(200);
+            const events = parseSSE(await r.text());
+            const toolResult = events.find((e) => e.event === 'tool_result');
+            expect(toolResult).toBeDefined();
+            expect(toolResult.data.images).toHaveLength(1);
+            const img = toolResult.data.images[0];
+            expect(img.data).toBe(pngBase64);
+            expect(img.url).toBeUndefined();
+            expect(img.mimeType).toBe('image/png');
+        } finally {
+            await stopMediaServer(s.httpServer);
         }
     });
 });

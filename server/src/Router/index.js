@@ -1,5 +1,6 @@
 
 import express from 'express';
+import { createReadStream } from 'node:fs';
 import { FrontendRouter } from './FrontendRouter.js';
 import { TranscribeBridge } from '../Bridge/TranscribeBridge.js';
 import { Llm } from '../Llm.js';
@@ -23,14 +24,18 @@ class Router {
      *   nur für Backward-Compatibility; die Produktion injiziert immer Security.
      * @param {McpManager} [mcp] - Optionaler geteilter MCP-Manager (sonst intern erzeugt).
      * @param {Stats} [stats] - Optionaler In-memory-Stats-Collector (LLM-Tokens, Transkriptionen).
+     * @param {MediaStore} [mediaStore] - Optionaler Media-Store (persistiert MCP-Tool-Bilder
+     *   auf Disk → Client bekommt `url` statt Base64). Wenn nicht vorhanden, bleibt das
+     *   Legacy-Verhalten (inline `{ mimeType, data }`).
      */
-    constructor(config, httpServer, logger, security = null, mcp = null, stats = null) {
+    constructor(config, httpServer, logger, security = null, mcp = null, stats = null, mediaStore = null) {
         this.config = config;
         this.httpServer = httpServer;
         this.label = '[Router]';
         this.logger = logger || { log: () => {}, error: () => {} };
         this.security = security;
         this.stats = stats;
+        this.mediaStore = mediaStore;
 
         this.router = express.Router();
         this.router.use(express.json());
@@ -116,6 +121,29 @@ class Router {
             } catch (err) {
                 next(err);
             }
+        });
+
+        // Media-API: liefert persistierte MCP-Tool-Bilder (UUID-Name, immutable).
+        // Path-Traversal-Guard liegt in MediaStore.get() (UUID-Regex + resolve-Check).
+        this.router.get('/api/media/:id', (req, res) => {
+            const meta = this.mediaStore?.get(req.params.id);
+            if (!meta) {
+                return res.status(404).json({ success: false, error: 'Media not found', code: 'media_not_found' });
+            }
+            res.setHeader('Content-Type', meta.mimeType);
+            res.setHeader('Content-Length', meta.size);
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            const stream = createReadStream(meta.filePath);
+            stream.on('error', (err) => {
+                // Race: Datei zwischen get() und Read weg (Cleanup) → saubere 500 statt Crash.
+                this.logger.error(this.label, 'Media-Stream fehlgeschlagen', { file: meta.filePath, error: err.message });
+                if (!res.headersSent) {
+                    res.status(500).json({ success: false, error: 'Media read failed', code: 'media_read_error' });
+                } else {
+                    res.destroy();
+                }
+            });
+            stream.pipe(res);
         });
 
         // Chat-API: Non-Streaming + SSE-Streaming.
@@ -310,7 +338,18 @@ class Router {
                         }
 
                         // Pfad A: Bilder IMMER an den Client (Anzeige im Chat).
-                        send('tool_result', { id: call.id, content, isError, images });
+                        // Bilder serverseitig persistieren → Client bekommt URL statt Base64.
+                        // Fallback: save() schlägt fehl (oder kein MediaStore) → inline Data (Legacy).
+                        const clientImages = (images || []).map((img) => {
+                            if (!this.mediaStore) return { mimeType: img.mimeType, data: img.data };
+                            try {
+                                return this.mediaStore.save(img.mimeType, img.data);
+                            } catch (err) {
+                                this.logger.error(this.label, 'MediaStore.save fehlgeschlagen, Fallback auf Inline-Data', { error: err.message });
+                                return { mimeType: img.mimeType, data: img.data };
+                            }
+                        });
+                        send('tool_result', { id: call.id, content, isError, images: clientImages });
 
                         // Fix 4: Klare Erfolgsmeldung für das LLM. Wenn das Tool
                         // erfolgreich war und Bilder zurückgibt, wird eine

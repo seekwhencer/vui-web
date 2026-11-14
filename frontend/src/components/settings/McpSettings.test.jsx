@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 
-vi.mock('../api/settings.js', () => ({
+vi.mock('../../api/settings.js', () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
 }));
 
-vi.mock('../api/mcp.js', () => ({
+vi.mock('../../api/mcp.js', () => ({
   listMcpServers: vi.fn(),
   addMcpServer: vi.fn(),
   updateMcpServer: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('../api/mcp.js', () => ({
   getMcpCapability: vi.fn().mockResolvedValue({ toolSupport: true }),
 }));
 
-import i18n from '../i18n.js';
+import i18n from '../../i18n.js';
 import McpSettings, {
   POLICY_OPTIONS,
   policyKey,
@@ -175,7 +175,7 @@ describe('McpSettings (Rendering: Tool-Policies)', () => {
       <McpSettings servers={SERVERS} tools={TOOLS} policies={POLICIES} />
     );
 
-    expect(html).toContain('mcp__policy-hint');
+    expect(html).toContain('settings__hint');
     expect(html).toContain('Unset tools are denied by default (deny-by-default).');
   });
 });
@@ -184,6 +184,7 @@ describe('McpSettings (Rendering: SSRF-Allowlist)', () => {
   it('zeigt die SSRF-Whitelist-Sektion mit Eingabefeld', () => {
     const html = renderToString(
       <McpSettings
+        view="ssrf"
         servers={SERVERS}
         tools={TOOLS}
         policies={POLICIES}

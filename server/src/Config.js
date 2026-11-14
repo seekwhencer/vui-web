@@ -92,6 +92,24 @@ const SECURITY_PARAMS = {
 };
 
 /**
+ * Media-Parameter (Bild-Persistierung, Variante B).
+ *
+ * Jede Zeile:
+ *   env       – Umgebungsvariable, die den Wert überschreibt
+ *   type      – 'string' | 'integer'
+ *   default   – Standardwert (wird in config.json geschrieben)
+ *
+ * Die Reihenfolge bestimmt die Reihenfolge in der UI.
+ */
+const MEDIA_PARAMS = {
+    dir: { env: 'MEDIA_DIR', type: 'string', default: '' },
+    imageTtlDays: { env: 'MEDIA_IMAGE_TTL_DAYS', type: 'integer', default: 30, min: 0 },
+    maxImages: { env: 'MEDIA_MAX_IMAGES', type: 'integer', default: 500, min: 0 },
+    maxBytes: { env: 'MEDIA_MAX_BYTES', type: 'integer', default: 524288000, min: 0 },
+    cleanupIntervalMs: { env: 'MEDIA_CLEANUP_INTERVAL_MS', type: 'integer', default: 3600000, min: 60000 },
+};
+
+/**
  * Loads and manages server configuration from environment variables and a config.json file.
  */
 class Config {
@@ -102,7 +120,7 @@ class Config {
     };
 
     /** Keys, die ohne Neustart wirksam werden (Bridge liest sie dynamisch). */
-    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort', 'mcpServers', 'security'];
+    static runtimeKeys = ['verbose', 'whisper', 'llm', 'badwords', 'whisperHost', 'whisperPort', 'mcpServers', 'security', 'media'];
 
     /** Keys, die einen Neustart erfordern. */
     static restartKeys = ['serverPort'];
@@ -131,6 +149,9 @@ class Config {
 
         // Security-Parameter (Zero-Trust): env > config.json > Default
         this.security = this.resolveSecurityParams(loaded);
+
+        // Media-Parameter (Bild-Persistierung): env > config.json > Default
+        this.media = this.resolveMediaParams(loaded);
 
         // Badword-Liste (serverseitig aus dem Transkript gefiltert)
         this.badwords = this.resolveBadwords(loaded);
@@ -272,6 +293,24 @@ class Config {
     }
 
     /**
+     * Ermittelt die Media-Parameter: env > config.json > Default.
+     * @param {Record<string, unknown> | null} loaded
+     * @returns {Record<string, unknown>}
+     */
+    resolveMediaParams(loaded) {
+        const params = {};
+        for (const [key, spec] of Object.entries(MEDIA_PARAMS)) {
+            const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            const fromFile = loaded?.media?.[key];
+            params[key] =
+                fromEnv !== undefined ? fromEnv
+                    : fromFile !== undefined ? fromFile
+                        : spec.default;
+        }
+        return params;
+    }
+
+    /**
      * Ermittelt die Badword-Liste: env > config.json > [].
      * @param {Record<string, unknown> | null} loaded
      * @returns {string[]}
@@ -311,6 +350,9 @@ class Config {
             security: Object.fromEntries(
                 Object.entries(SECURITY_PARAMS).map(([key, spec]) => [key, spec.default])
             ),
+            media: Object.fromEntries(
+                Object.entries(MEDIA_PARAMS).map(([key, spec]) => [key, spec.default])
+            ),
             badwords: [],
             mcpServers: []
         };
@@ -335,7 +377,8 @@ class Config {
                 ...this.security,
                 toolPolicies: { ...(this.security.toolPolicies || {}) },
                 virtualTools: { ...(this.security.virtualTools || {}) }
-            }
+            },
+            media: { ...this.media }
         };
     }
 
@@ -376,6 +419,8 @@ class Config {
         errors.push(...this.validateMcpServers(s.mcpServers || []));
 
         errors.push(...this.validateSecurityParams(s.security || {}));
+
+        errors.push(...this.validateMediaParams(s.media || {}));
 
         return errors;
     }
@@ -503,6 +548,43 @@ class Config {
     }
 
     /**
+     * Validiert den Media-Block.
+     * @param {Record<string, unknown>} s
+     * @returns {string[]} Fehlerliste (leer = gültig)
+     */
+    validateMediaParams(s) {
+        const errors = [];
+        for (const [key, spec] of Object.entries(MEDIA_PARAMS)) {
+            const value = s[key];
+            const err = this.validateMediaParam(key, spec, value);
+            if (err) errors.push(err);
+        }
+        return errors;
+    }
+
+    /**
+     * Validiert einen einzelnen Media-Parameter.
+     * @param {string} key
+     * @param {{type: string, min?: number}} spec
+     * @param {unknown} value
+     * @returns {string | null}
+     */
+    validateMediaParam(key, spec, value) {
+        const label = `media.${key}`;
+        switch (spec.type) {
+            case 'string':
+                if (typeof value !== 'string') return `${label} muss ein String sein`;
+                break;
+            case 'integer': {
+                const min = spec.min ?? 0;
+                if (!Number.isInteger(value) || value < min) return `${label} muss eine Ganzzahl >= ${min} sein`;
+                break;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Validiert den virtualTools-Block (Toggle je virtuelles Tool).
      * @param {unknown} value
      * @returns {string | null}
@@ -581,6 +663,7 @@ class Config {
             whisper: { ...current.whisper, ...(patch.whisper || {}) },
             llm: { ...current.llm, ...(patch.llm || {}) },
             security: { ...current.security, ...(patch.security || {}) },
+            media: { ...current.media, ...(patch.media || {}) },
             badwords: patch.badwords !== undefined ? patch.badwords : current.badwords,
             mcpServers: patch.mcpServers !== undefined ? patch.mcpServers : current.mcpServers
         };
@@ -605,6 +688,7 @@ class Config {
             toolPolicies: { ...(next.security.toolPolicies || {}) },
             virtualTools: { ...(next.security.virtualTools || {}) }
         };
+        this.media = { ...next.media };
         this.badwords = next.badwords.map((w) => String(w)).filter(Boolean);
         this.mcpServers = (next.mcpServers || []).map((s) => ({ ...s }));
 
@@ -631,6 +715,7 @@ class Config {
                     whisper: this.whisper,
                     llm: this.llm,
                     security: this.security,
+                    media: this.media,
                     badwords: this.badwords,
                     mcpServers: this.mcpServers
                 },
@@ -642,4 +727,4 @@ class Config {
     }
 }
 
-export { Config, WHISPER_PARAMS, LLM_PARAMS, SECURITY_PARAMS, VAD_PARAM_KEYS, VIRTUAL_TOOL_NAMES };
+export { Config, WHISPER_PARAMS, LLM_PARAMS, SECURITY_PARAMS, MEDIA_PARAMS, VAD_PARAM_KEYS, VIRTUAL_TOOL_NAMES };

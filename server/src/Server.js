@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Router } from './Router/index.js';
+import { MediaStore } from './MediaStore.js';
 import { McpManager } from './McpManager.js';
 import { PolicyEngine } from './Security/PolicyEngine.js';
 import { ApprovalService } from './Security/ApprovalService.js';
@@ -74,8 +75,14 @@ export class Server {
         // Reset bei Server-Neustart — bewusst nicht persistent.
         const stats = new Stats();
 
+        // MediaStore: persistiert MCP-Tool-Bilder auf Disk (Variante B).
+        const mediaStore = new MediaStore({ config: this.config, logger: this.logger });
+        mediaStore.cleanup(); // einmalig beim Start (verwaiste Dateien aufräumen)
+        const cleanupTimer = setInterval(() => mediaStore.cleanup(), this.config?.media?.cleanupIntervalMs || 3600000);
+        cleanupTimer.unref?.(); // nicht den Prozess am Beenden hindern
+
         // append the routes
-        this.router = new Router(this.config, this.httpServer, this.logger, security, mcp, stats);
+        this.router = new Router(this.config, this.httpServer, this.logger, security, mcp, stats, mediaStore);
         this.router.stats = stats;
         this.router.transcribeBridge.onTranscription = () => stats.recordTranscription();
         await this.router.define();
@@ -102,6 +109,7 @@ export class Server {
 
         const shutdown = async () => {
             this.logger.log(this.label, 'Shutting down...');
+            clearInterval(cleanupTimer); // Media-Cleanup-Interval stoppen
             this.router?.transcribeBridge?.close(); // Transkriptions-WS-Clients terminate
             this.router?.logsWs?.close(); // WS-Clients terminate (sonst hängt httpServer.close())
             this.router?.tailService?.stop(); // tail-Child-Process SIGTERM

@@ -16,7 +16,7 @@ export function isEscapeKey(event) {
  * Schließen über: Close-Button, Klick auf den Hintergrund, Escape-Taste.
  *
  * Props:
- * - image   → { mimeType, data } oder null (null → rendert nichts)
+ * - image   → { mimeType, data, url } oder null (null → rendert nichts)
  * - onClose → Callback zum Schließen
  */
 export default function ImageLightbox({ image, onClose }) {
@@ -33,6 +33,9 @@ export default function ImageLightbox({ image, onClose }) {
 
   if (!image) return null;
 
+  const src = image.url || (image.data ? buildDataUrl(image.mimeType, image.data) : null);
+  if (!src) return null;
+
   return (
     <div
       className="lightbox"
@@ -42,7 +45,7 @@ export default function ImageLightbox({ image, onClose }) {
     >
       <img
         className="lightbox__image"
-        src={buildDataUrl(image.mimeType, image.data)}
+        src={src}
         alt={t('chat.image.alt')}
         onClick={(event) => event.stopPropagation()}
       />

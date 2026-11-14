@@ -54,22 +54,12 @@ function loadInitial() {
   return { conversations: [], activeId: null };
 }
 
-// Bilder sind session-only: localStorage hat ~5 MB Quota, ein einziges
-// Base64-Bild sprengt das. persist() stript `images` aus den Turns; der
-// In-Memory-State behält sie (Live-Anzeige bleibt, nach Reload weg).
-function stripImages(state) {
-  return {
-    ...state,
-    conversations: state.conversations.map((c) => ({
-      ...c,
-      turns: c.turns.map(({ images, ...rest }) => rest),
-    })),
-  };
-}
-
+// Bilder werden serverseitig persistiert (Variante B): Der Server liefert
+// `url` (klein, ~100 Bytes/Bild) statt Base64-Data. localStorage-Quota ist
+// kein Problem mehr → persist() schreibt `images` mitsamt der Turns.
 function persist(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripImages(state)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (_) {}
 }
 

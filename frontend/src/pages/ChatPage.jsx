@@ -76,9 +76,9 @@ export default function ChatPage() {
       error: result.error ? result.error.message || String(result.error) : null,
       tokens: result.tokens,
       model: result.model,
-      // Bilder (session-only): in den In-Memory-Turn übernehmen, damit sie
-      // nach der Finalisierung sichtbar bleiben (persist() stript sie vor
-      // dem localStorage-Write — nach Reload weg, Turn bleibt).
+      // Bilder: in den In-Memory-Turn übernehmen, damit sie nach der
+      // Finalisierung sichtbar bleiben (persist() schreibt sie mitsamt
+      // dem Turn — nach Reload sichtbar).
       images: result.images || [],
     });
   };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getSettings, updateSettings } from '../api/settings.js';
+import { getSettings, updateSettings } from '../../api/settings.js';
 
 /**
  * Security-Felder (alle `security.*`), Reihenfolge = Anzeigereihenfolge.
@@ -110,23 +110,23 @@ export default function SecuritySettings({ security: securityProp } = {}) {
   };
 
   if (loading) {
-    return <p className="mcp__loading">{t('settings.loading')}</p>;
+    return <p className="settings__loading">{t('settings.loading')}</p>;
   }
 
   return (
-    <div className="mcp">
-      <div className="mcp__header">
-        <div className="mcp__header-title">
+    <div className="settings__panel">
+      <div className="settings__panel-header">
+        <div className="settings__panel-header-title">
           <h3>{t('settings.sections.security')}</h3>
           {saved && !error && (
-            <p className="mcp__saved" role="status">{t('settings.saved')}</p>
+            <p className="settings__saved" role="status">{t('settings.saved')}</p>
           )}
         </div>
       </div>
 
-      <p className="mcp__policy-hint">{t('settings.securityHint')}</p>
+      <p className="settings__hint">{t('settings.securityHint')}</p>
 
-      {error && <p className="mcp__error" role="alert">{error}</p>}
+      {error && <p className="settings__error" role="alert">{error}</p>}
 
       <div className="settings__grid">
         {SECURITY_FIELDS.map((field) => {

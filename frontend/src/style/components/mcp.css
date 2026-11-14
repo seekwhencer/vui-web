@@ -1,35 +1,6 @@
-/* MCP-Tab (Settings) */
-.mcp {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  position: relative;
-}
-
-.mcp__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.mcp__header h3 {
-  margin: 0;
-  font-size: var(--fs-lg);
-  color: var(--color-text);
-}
-
-.mcp__header-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.mcp__error {
-  color: var(--color-error);
-  font-size: var(--fs-sm);
-  margin: 0;
-}
+/* MCP-Tab (Settings) — nur MCP-spezifische Klassen.
+   Gemeinsame Panel-Klassen (Wrapper, Header, Loading, Saved, Error, Hint)
+   stehen in settings.css als settings__*. */
 
 .mcp__warning {
   color: var(--color-validation);
@@ -40,7 +11,6 @@
   margin: 0;
 }
 
-.mcp__loading,
 .mcp__empty {
   color: var(--color-validation);
   font-size: var(--fs-xs);
@@ -240,12 +210,6 @@
 }
 
 /* Tool-Policies (deny-by-default) + SSRF-Allowlist */
-.mcp__saved {
-  color: var(--color-success);
-  font-size: var(--fs-sm);
-  margin: 0;
-}
-
 .mcp__tool {
   display: flex;
   flex-direction: column;
@@ -314,39 +278,15 @@
 }
 
 .mcp__ssrf {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.mcp__ssrf h4 {
   margin: 0;
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   color: var(--color-text);
-}
-
-.mcp__ssrf-hint {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--color-text-secondary);
 }
 
 /* Eingebaute (virtuelle) Tools */
 .mcp__builtin {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.mcp__builtin h4 {
   margin: 0;
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   color: var(--color-text);
 }
 

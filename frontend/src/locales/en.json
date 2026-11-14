@@ -108,6 +108,37 @@
     "uiHint": "Applied immediately and saved locally",
     "securityHint": "Changes apply immediately",
     "loading": "Loading…",
+    "categories": {
+      "app": "App",
+      "asr": "ASR",
+      "llm": "LLM",
+      "ui": "UI",
+      "mcp": "MCP"
+    },
+    "sub": {
+      "connection": "Connection",
+      "prompt": "Prompt",
+      "servers": "Servers",
+      "builtin": "Built-in Tools",
+      "ssrf": "SSRF"
+    },
+    "app": {
+      "title": "App",
+      "placeholder": "App settings will appear here.",
+      "media": {
+        "title": "Media",
+        "dir": "Media path",
+        "dirHint": "Empty = default (server/data/media). Changes require a restart.",
+        "imageTtlDays": "Image TTL (days)",
+        "imageTtlDaysHint": "0 = images never expire.",
+        "maxImages": "Max images",
+        "maxImagesHint": "0 = unlimited.",
+        "maxBytes": "Max storage (bytes)",
+        "maxBytesHint": "0 = unlimited. Default: 524288000 (500 MB).",
+        "cleanupIntervalMs": "Cleanup interval (ms)",
+        "cleanupIntervalMsHint": "Min. 60000 (1 minute)."
+      }
+    },
     "sections": {
       "basic": "Basic",
       "decoding": "Decoding",

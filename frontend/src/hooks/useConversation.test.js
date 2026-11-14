@@ -43,17 +43,20 @@ describe('updateTurn (images)', () => {
   });
 });
 
-describe('persist (Quota-Schutz)', () => {
-  it('localStorage-String enthält kein images', () => {
+describe('persist (Bilder)', () => {
+  it('localStorage-String enthält images (serverseitig persistiert, nicht gestrippt)', () => {
     const turnId = addTurn({ question: 'frage' });
-    updateTurn(turnId, { images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }] });
+    const images = [
+      { id: 'abc-123', mimeType: 'image/png', url: '/api/media/abc-123', size: 123 },
+    ];
+    updateTurn(turnId, { images });
 
     const raw = storage.get(STORAGE_KEY);
     expect(raw).toBeTruthy();
-    expect(raw).not.toContain('images');
+    expect(raw).toContain('images');
 
     const parsed = JSON.parse(raw);
-    expect(parsed.conversations[0].turns[0]).not.toHaveProperty('images');
+    expect(parsed.conversations[0].turns[0].images).toEqual(images);
   });
 
   it('In-Memory-State behält images (Live-Anzeige bleibt)', () => {

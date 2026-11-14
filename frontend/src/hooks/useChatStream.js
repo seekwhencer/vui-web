@@ -84,8 +84,9 @@ async function run(question, history, reasoningEffort) {
   let inThink = false;
   let thinkClosed = false;
   let images = [];
-  // Dedup: Gleiche Bilder (identischer base64-Data) werden nur einmal
-  // gesammelt — auch wenn das LLM ein Tool mehrfach aufruft (Loop ohne Vision).
+  // Dedup: Gleiche Bilder (identischer base64-Data ODER identische url)
+  // werden nur einmal gesammelt — auch wenn das LLM ein Tool mehrfach
+  // aufruft (Loop ohne Vision).
   let seenImageHashes = new Set();
   let err = null;
 
@@ -172,14 +173,21 @@ async function run(question, history, reasoningEffort) {
       } else if (event === 'tool_result') {
         // MCP-Tool-Ergebnis mit Bild (ImageContent): Bilder für den
         // Live-Turn sammeln. Ohne `images` (oder bei altem Server) bleibt
-        // die Liste leer. Dedup per base64-Data: Ein Tool-Loop (z. B.
+        // die Liste leer. Beide Formate durchlassen:
+        //   neu: { id, mimeType, url, size }   alt: { mimeType, data }
+        // Dedup per base64-Data ODER url: Ein Tool-Loop (z. B.
         // take_screenshot ohne Vision) liefert dasselbe Bild mehrfach —
         // nur das erste wird behalten.
         if (data && Array.isArray(data.images)) {
           let added = false;
           for (const img of data.images) {
-            if (img && typeof img.data === 'string' && !seenImageHashes.has(img.data)) {
-              seenImageHashes.add(img.data);
+            if (!img) continue;
+            const key =
+              typeof img.data === 'string' ? img.data
+              : typeof img.url === 'string' ? img.url
+              : null;
+            if (key && !seenImageHashes.has(key)) {
+              seenImageHashes.add(key);
               images.push(img);
               added = true;
             }

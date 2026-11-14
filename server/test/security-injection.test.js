@@ -232,11 +232,9 @@ describe('Prompt Injection (Phase 5)', () => {
         expect(approvalEvent.data.arguments).toEqual({ cmd: 'rm -rf /' });
         expect(approvalEvent.data.expiresAt).toBeTruthy();
 
-        // Das LLM erhielt AWAITING_APPROVAL als Tool-Ergebnis (nicht die Ausführung).
-        const toolMsg = llm.state.chatWithToolsCalls[1].messages.find((m) => m.role === 'tool');
-        expect(toolMsg).toBeTruthy();
-        expect(toolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
-        expect(toolMsg.content).not.toContain('rm -rf');
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        // Das LLM darf NICHT weiterarbeiten — der Mensch bestätigt im Dialog.
+        expect(llm.state.chatWithToolsCalls).toHaveLength(1);
 
         // Eine PENDING_APPROVAL-Aktion wurde gespeichert.
         const pending = await store.listPending();
@@ -279,10 +277,9 @@ describe('Prompt Injection (Phase 5)', () => {
         // Das write-Tool (aus der injizierten Anweisung) wurde NICHT ausgeführt.
         expect(mock.state.callToolCalls.some((c) => c.toolName === 'write_file')).toBe(false);
 
-        // Das write-Tool braucht Approval (AWAITING_APPROVAL).
-        const writeToolMsg = llm.state.chatWithToolsCalls[2].messages.find((m) => m.role === 'tool' && m.tool_call_id === 'call_2');
-        expect(writeToolMsg).toBeTruthy();
-        expect(writeToolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        // Das LLM darf NICHT weiterarbeiten — der Mensch bestätigt im Dialog.
+        expect(llm.state.chatWithToolsCalls).toHaveLength(2);
 
         // approval_required SSE-Event für das write-Tool.
         const approvalEvent = events.find((e) => e.event === 'approval_required' && e.data.toolName === 'write_file');
@@ -322,10 +319,9 @@ describe('Prompt Injection (Phase 5)', () => {
         // Das write-Tool wurde NICHT ausgeführt.
         expect(mock.state.callToolCalls.some((c) => c.toolName === 'write_file')).toBe(false);
 
-        // Das write-Tool braucht Approval (AWAITING_APPROVAL).
-        const writeToolMsg = llm.state.chatWithToolsCalls[2].messages.find((m) => m.role === 'tool' && m.tool_call_id === 'call_2');
-        expect(writeToolMsg).toBeTruthy();
-        expect(writeToolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        // Das LLM darf NICHT weiterarbeiten — der Mensch bestätigt im Dialog.
+        expect(llm.state.chatWithToolsCalls).toHaveLength(2);
 
         // approval_required SSE-Event für das write-Tool.
         const approvalEvent = events.find((e) => e.event === 'approval_required' && e.data.toolName === 'write_file');
@@ -358,11 +354,9 @@ describe('Prompt Injection (Phase 5)', () => {
         // Das write-Tool wurde NICHT ausgeführt.
         expect(mock.state.callToolCalls).toHaveLength(0);
 
-        // Das LLM erhielt AWAITING_APPROVAL (nicht APPROVED).
-        const toolMsg = llm.state.chatWithToolsCalls[1].messages.find((m) => m.role === 'tool');
-        expect(toolMsg).toBeTruthy();
-        expect(toolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
-        expect(toolMsg.content).not.toMatch(/APPROVED/);
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        // Das LLM darf NICHT weiterarbeiten — der Mensch bestätigt im Dialog.
+        expect(llm.state.chatWithToolsCalls).toHaveLength(1);
 
         // Das LLM hat KEINEN Zugriff auf Approval-Tools (keine approve/action-Tools in der Tool-Liste).
         const tools = llm.state.chatWithToolsCalls[0].tools;
@@ -384,16 +378,17 @@ describe('Prompt Injection (Phase 5)', () => {
         expect(entries.some((e) => e.event === 'ACTION_APPROVED' && e.actionId === actionId)).toBe(false);
 
         // Ein Mensch genehmigt die Aktion über den Approval-Endpunkt.
+        // Approve → APPROVED → COMPLETED (ausgeführt).
         const approveRes = await json('POST', `/api/actions/${actionId}/approve`, {});
         expect(approveRes.status).toBe(200);
         const approved = await approveRes.json();
         expect(approved.success).toBe(true);
-        expect(approved.data.status).toBe('APPROVED');
+        expect(approved.data.status).toBe('COMPLETED');
         expect(approved.data.approvedBy).toBe('local');
 
-        // Die Aktion ist jetzt APPROVED.
+        // Die Aktion ist jetzt COMPLETED (ausgeführt).
         const after = await store.get(actionId);
-        expect(after.status).toBe('APPROVED');
+        expect(after.status).toBe('COMPLETED');
 
         // Audit: ACTION_APPROVED nach der menschlichen Freigabe.
         entries = await audit.tail(100);

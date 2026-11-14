@@ -50,7 +50,7 @@ const VAD_PARAM_KEYS = [
  *
  * Jede Zeile:
  *   env       – Umgebungsvariable, die den Wert überschreibt
- *   type      – 'string' | 'integer'
+ *   type      – 'string' | 'integer' | 'triState'
  *   default   – Standardwert (wird in config.json geschrieben)
  *
  * Die Reihenfolge bestimmt die Reihenfolge in der UI.
@@ -61,6 +61,7 @@ const LLM_PARAMS = {
     port: { env: 'LLM_PORT', type: 'integer', default: 8080 },
     model: { env: 'LLM_MODEL', type: 'string', default: '' },
     systemPrompt: { env: 'LLM_SYSTEM_PROMPT', type: 'string', default: 'You are a helpful assistant. Answer in markdown format.' },
+    vision: { env: 'LLM_VISION', type: 'triState', default: 'auto' },
 };
 
 /** Bekannte virtuelle Tool-Namen (Whitelist für security.virtualTools). */
@@ -78,7 +79,9 @@ const VIRTUAL_TOOL_NAMES = ['get_config', 'get_mcp', 'get_policies', 'get_stats'
  */
 const SECURITY_PARAMS = {
     maxToolTurns: { env: 'SECURITY_MAX_TOOL_TURNS', type: 'integer', default: 10, min: 1 },
+    maxToolCallsPerTool: { env: 'SECURITY_MAX_TOOL_CALLS_PER_TOOL', type: 'integer', default: 2, min: 1 },
     maxToolResultBytes: { env: 'SECURITY_MAX_TOOL_RESULT_BYTES', type: 'integer', default: 65536, min: 1 },
+    maxToolImageBytes: { env: 'SECURITY_MAX_TOOL_IMAGE_BYTES', type: 'integer', default: 2097152, min: 1 },
     toolTimeoutMs: { env: 'SECURITY_TOOL_TIMEOUT_MS', type: 'integer', default: 30000, min: 1 },
     maxPendingActions: { env: 'SECURITY_MAX_PENDING_ACTIONS', type: 'integer', default: 20, min: 1 },
     approvalTtlMs: { env: 'SECURITY_APPROVAL_TTL_MS', type: 'integer', default: 600000, min: 1 },
@@ -168,6 +171,13 @@ class Config {
         switch (type) {
             case 'boolean':
                 return raw === 'true' || raw === '1';
+            case 'triState': {
+                const s = String(raw).trim().toLowerCase();
+                if (s === 'auto') return 'auto';
+                if (s === 'true' || s === '1') return true;
+                if (s === 'false' || s === '0') return false;
+                return undefined;
+            }
             case 'integer': {
                 const n = parseInt(raw, 10);
                 return Number.isNaN(n) ? undefined : n;
@@ -433,6 +443,10 @@ class Config {
                     return `${label} muss eine Ganzzahl zwischen 1 und 65535 sein`;
                 break;
             }
+            case 'triState':
+                if (value !== 'auto' && value !== true && value !== false)
+                    return `${label} muss 'auto', true oder false sein`;
+                break;
         }
         return null;
     }

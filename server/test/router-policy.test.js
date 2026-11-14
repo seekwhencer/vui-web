@@ -236,13 +236,11 @@ describe('Chat-Tool-Loop mit Zero-Trust-Policy (POST /api/chat)', () => {
         expect(r.status).toBe(200);
         const j = await r.json();
         expect(j.success).toBe(true);
-        expect(j.data.answer).toBe('FINAL_ANSWER');
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        expect(j.data.answer).toMatch(/Wartet auf Freigabe/);
+        expect(llm.state.chatWithToolsCalls).toHaveLength(1);
         // Das write-Tool wurde NICHT ausgeführt.
         expect(mock.state.callToolCalls).toHaveLength(0);
-        // Das LLM erhielt AWAITING_APPROVAL als Tool-Ergebnis.
-        const toolMsg = llm.state.chatWithToolsCalls[1].messages.find((m) => m.role === 'tool');
-        expect(toolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
-        expect(toolMsg.content).toMatch(/wartet auf Freigabe/);
         // Eine PENDING_APPROVAL-Aktion wurde gespeichert.
         const pending = await store.listPending();
         expect(pending).toHaveLength(1);
@@ -298,10 +296,11 @@ describe('Chat-Tool-Loop mit Zero-Trust-Policy (POST /api/chat)', () => {
         expect(r.status).toBe(200);
         const j = await r.json();
         expect(j.success).toBe(true);
+        // LLM-Loop STOPPT nach AWAITING_APPROVAL (keine weitere LLM-Runde).
+        expect(j.data.answer).toMatch(/Wartet auf Freigabe/);
+        expect(llm.state.chatWithToolsCalls).toHaveLength(1);
         // Das execute-Tool wurde NICHT ausgeführt.
         expect(mock.state.callToolCalls).toHaveLength(0);
-        const toolMsg = llm.state.chatWithToolsCalls[1].messages.find((m) => m.role === 'tool');
-        expect(toolMsg.content).toMatch(/^AWAITING_APPROVAL:/);
         const pending = await store.listPending();
         expect(pending.some((a) => a.toolName === 'run_command')).toBe(true);
     });

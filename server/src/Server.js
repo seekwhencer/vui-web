@@ -52,7 +52,11 @@ export class Server {
     async start() {
         // Zero-Trust-Security-Dependencies instanziieren (Phase 1+2).
         // Daten unter server/data/ (git-ignored): actions.json + audit.jsonl.
-        const dataDir = join(__dirname, 'data');
+        // WICHTIG: NICHT unter server/src/ — das Dev-Setup läuft mit
+        // `node --watch --watch-path=./src`. Jede Schreiboperation in ./src
+        // (z. B. actions.json/audit.jsonl beim Approval-Flow) würde den
+        // Prozess neu starten → Vite-HMR-WS bricht → komplette Seiten-Reload.
+        const dataDir = join(__dirname, '..', 'data');
         mkdirSync(dataDir, { recursive: true });
         const store = new ActionStore(join(dataDir, 'actions.json'), this.logger);
         const audit = new Audit(join(dataDir, 'audit.jsonl'), this.logger);

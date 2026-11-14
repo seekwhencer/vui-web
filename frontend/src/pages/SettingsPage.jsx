@@ -4,6 +4,7 @@ import { Save, RotateCcw } from 'lucide-react';
 import useSettings from '../hooks/useSettings.js';
 import Slider from '../components/ui/Slider.jsx';
 import McpSettings from '../components/McpSettings.jsx';
+import SecuritySettings from '../components/SecuritySettings.jsx';
 import { useAppSettings, setAppSettings, resetAppSettings } from '../services/appSettings.js';
 import { primaryColorForHue } from '../utils/primaryColor.js';
 import { radiusForFactor } from '../utils/radius.js';
@@ -77,6 +78,7 @@ const SECTIONS = [
       { key: 'port', type: 'number', label: 'settings.fields.llmPort', min: 1, max: 65535, step: 1 },
       { key: 'model', type: 'text', label: 'settings.fields.llmModel', placeholder: 'llama3.1' },
       { key: 'systemPrompt', type: 'textarea', label: 'settings.fields.llmSystemPrompt' },
+      { key: 'vision', type: 'select', label: 'settings.fields.llmVision', options: ['auto', 'true', 'false'] },
     ],
   },
 ];
@@ -87,6 +89,7 @@ const TABS = [
   ...SECTIONS.map((s) => ({ id: s.id, title: s.title })),
   { id: 'badwords', title: 'settings.sections.badwords' },
   { id: 'mcp', title: 'settings.sections.mcp' },
+  { id: 'security', title: 'settings.sections.security' },
   { id: 'ui', title: 'settings.sections.ui' },
 ];
 
@@ -200,7 +203,7 @@ export default function SettingsPage() {
 
     if (field.type === 'checkbox') {
       return (
-        <label className="settings__field settings__field--check">
+        <label key={field.key} className="settings__field settings__field--check">
           <input
             type="checkbox"
             checked={Boolean(value)}
@@ -213,7 +216,7 @@ export default function SettingsPage() {
 
     if (field.type === 'temperature') {
       return (
-        <label className="settings__field">
+        <label key={field.key} className="settings__field">
           <span>{t(field.label)}</span>
           <input
             type="text"
@@ -227,7 +230,7 @@ export default function SettingsPage() {
 
     if (field.type === 'number') {
       return (
-        <label className="settings__field">
+        <label key={field.key} className="settings__field">
           <span>{t(field.label)}</span>
           <input
             type="number"
@@ -246,7 +249,7 @@ export default function SettingsPage() {
 
     if (field.type === 'textarea') {
       return (
-        <label className="settings__field settings__field--full">
+        <label key={field.key} className="settings__field settings__field--full">
           <span>{t(field.label)}</span>
           <textarea
             className="settings__textarea"
@@ -259,9 +262,29 @@ export default function SettingsPage() {
       );
     }
 
+    if (field.type === 'select') {
+      // TriState: true/false ↔ 'true'/'false', 'auto' bleibt String.
+      const toOption = (v) => (v === true ? 'true' : v === false ? 'false' : 'auto');
+      const fromOption = (o) => (o === 'true' ? true : o === 'false' ? false : 'auto');
+      return (
+        <label key={field.key} className="settings__field">
+          <span>{t(field.label)}</span>
+          <select
+            value={toOption(value)}
+            onChange={(e) => setGroupValue(field.key, fromOption(e.target.value))}
+            className="select"
+          >
+            {field.options.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
     // text
     return (
-      <label className="settings__field">
+      <label key={field.key} className="settings__field">
         <span>{t(field.label)}</span>
         <input
           type="text"
@@ -300,6 +323,8 @@ export default function SettingsPage() {
         <div className="settings__body" role="tabpanel">
           {activeTab === 'mcp' ? (
             <McpSettings />
+          ) : activeTab === 'security' ? (
+            <SecuritySettings />
           ) : activeTab === 'ui' ? (
             <div className="settings__grid">
               <Slider
@@ -341,7 +366,7 @@ export default function SettingsPage() {
               <>
                 <div className="settings__grid">
                   {activeSection.fields.map((field) => (
-                    <div key={field.key}>{renderField(activeSection, field)}</div>
+                    renderField(activeSection, field)
                   ))}
                 </div>
 
@@ -374,6 +399,8 @@ export default function SettingsPage() {
         <div className="settings__footer">
           {activeTab === 'mcp' ? (
             <span className="settings__saved">{t('mcp.hint')}</span>
+          ) : activeTab === 'security' ? (
+            <span className="settings__saved">{t('settings.securityHint')}</span>
           ) : activeTab === 'ui' ? (
             <>
               <span className="settings__saved">{t('settings.uiHint')}</span>

@@ -23,7 +23,7 @@ loadEnv(path.join(scriptDir, '.env'));
 const BASE = (process.env.SHOT_BASE_URL || '').replace(/\/+$/, '');
 const OUT = process.env.SHOT_OUT_DIR || './screenshots';
 const VIEWPORT = { width: 1300, height: 1000 };
-const ZOOM = '1.25'; // "zoom in twice": 100% -> 110% -> 125%
+const ZOOM = '1.0'; // "zoom in twice": 100% -> 110% -> 125%
 const THEMES = (process.env.SHOT_THEMES || 'light,dark').split(',').map((s) => s.trim()).filter(Boolean);
 
 const log = (...a) => console.log('[shot]', ...a);

@@ -97,7 +97,16 @@ describe('McpManager', () => {
                 function: {
                     name: 'weather__get_weather',
                     description: 'Get weather',
-                    parameters: { type: 'object', properties: { city: { type: 'string' } } },
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            city: { type: 'string' },
+                            include_image: {
+                                type: 'boolean',
+                                description: 'Set to true if you need to SEE the returned image to answer well. The image is always shown to the user regardless.',
+                            },
+                        },
+                    },
                 },
             },
         ]);
@@ -133,6 +142,58 @@ describe('McpManager', () => {
         const result = await manager.callTool('weather', 'get_weather', {});
         expect(result.isError).toBe(true);
         expect(result.content).toBe('tool exploded');
+    });
+
+    it('callTool() extrahiert ImageContent-Blöcke in images', async () => {
+        const conn = makeFakeConnection({ tools: [{ name: 'get_weather' }] });
+        conn.client.callTool = async () => ({
+            content: [
+                { type: 'text', text: 'Sunny' },
+                { type: 'image', mimeType: 'image/png', data: 'aW1hZ2U=' },
+            ],
+            isError: false,
+        });
+        manager.connections.set('weather', conn);
+        const result = await manager.callTool('weather', 'get_weather', {});
+        expect(result.isError).toBe(false);
+        expect(result.content).toBe('Sunny');
+        expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
+    });
+
+    it('callTool() liefert images: [] bei nur Text', async () => {
+        manager.connections.set('weather', makeFakeConnection({ tools: [{ name: 'get_weather' }] }));
+        const result = await manager.callTool('weather', 'get_weather', {});
+        expect(result.images).toEqual([]);
+    });
+
+    it('callTool() liefert images: [] im Fehlerpfad (nicht verbunden)', async () => {
+        const result = await manager.callTool('weather', 'get_weather', {});
+        expect(result.isError).toBe(true);
+        expect(result.images).toEqual([]);
+    });
+
+    it('callTool() liefert images: [] im Fehlerpfad (Client wirft)', async () => {
+        const conn = makeFakeConnection({ tools: [{ name: 'get_weather' }] });
+        conn.client.callTool = async () => { throw new Error('tool exploded'); };
+        manager.connections.set('weather', conn);
+        const result = await manager.callTool('weather', 'get_weather', {});
+        expect(result.isError).toBe(true);
+        expect(result.images).toEqual([]);
+    });
+
+    it('callTool() ignoriert ImageContent ohne gültige data/mimeType', async () => {
+        const conn = makeFakeConnection({ tools: [{ name: 'get_weather' }] });
+        conn.client.callTool = async () => ({
+            content: [
+                { type: 'text', text: 'ok' },
+                { type: 'image', data: 'aW1hZ2U=' },
+                { type: 'image', mimeType: 'image/png' },
+            ],
+            isError: false,
+        });
+        manager.connections.set('weather', conn);
+        const result = await manager.callTool('weather', 'get_weather', {});
+        expect(result.images).toEqual([]);
     });
 
     it('close() schließt alle Verbindungen', async () => {

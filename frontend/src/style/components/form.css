@@ -138,6 +138,18 @@
   background-color: var(--color-surface);
 }
 
+.select {
+  color: var(--color-text);
+  background-color: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+}
+
 /* ===== Selects ===== */
 .topbar__lang-select {
   border: none;

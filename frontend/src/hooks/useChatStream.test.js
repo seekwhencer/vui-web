@@ -94,6 +94,87 @@ describe('approval_required-Event (Store)', () => {
   });
 });
 
+describe('tool_result-Event (images)', () => {
+  it('tool_result mit images → result.images gefüllt', async () => {
+    chatStream.mockImplementation(sse([
+      {
+        event: 'tool_result',
+        data: {
+          id: 'call-1',
+          content: 'ok',
+          isError: false,
+          images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }],
+        },
+      },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: { tokens: null, model: null } },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.error).toBeNull();
+    expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
+  });
+
+  it('tool_result ohne images → images bleibt []', async () => {
+    chatStream.mockImplementation(sse([
+      { event: 'tool_result', data: { id: 'call-1', content: 'ok', isError: false } },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: {} },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.error).toBeNull();
+    expect(result.images).toEqual([]);
+  });
+
+  it('mehrere tool_result-Events → images akkumulieren', async () => {
+    chatStream.mockImplementation(sse([
+      { event: 'tool_result', data: { id: 'call-1', content: 'a', images: [{ mimeType: 'image/png', data: 'x' }] } },
+      { event: 'tool_result', data: { id: 'call-2', content: 'b', images: [{ mimeType: 'image/jpeg', data: 'y' }] } },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: {} },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.images).toEqual([
+      { mimeType: 'image/png', data: 'x' },
+      { mimeType: 'image/jpeg', data: 'y' },
+    ]);
+  });
+
+  it('doppelte Bilder (gleicher base64-Data) → nur einmal gesammelt (Dedup)', async () => {
+    chatStream.mockImplementation(sse([
+      { event: 'tool_result', data: { id: 'call-1', content: 'a', images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }] } },
+      { event: 'tool_result', data: { id: 'call-2', content: 'b', images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }] } },
+      { event: 'answer', data: 'antwort' },
+      { event: 'done', data: {} },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
+  });
+
+  it('Tool-Loop: 4× dasselbe Bild → nur 1 Bild im Ergebnis', async () => {
+    chatStream.mockImplementation(sse([
+      { event: 'tool_result', data: { id: 'c1', content: 'a', images: [{ mimeType: 'image/png', data: 'SCREENSHOT' }] } },
+      { event: 'tool_result', data: { id: 'c2', content: 'b', images: [{ mimeType: 'image/png', data: 'SCREENSHOT' }] } },
+      { event: 'tool_result', data: { id: 'c3', content: 'c', images: [{ mimeType: 'image/png', data: 'SCREENSHOT' }] } },
+      { event: 'tool_result', data: { id: 'c4', content: 'd', images: [{ mimeType: 'image/png', data: 'SCREENSHOT' }] } },
+      { event: 'answer', data: 'fertig' },
+      { event: 'done', data: {} },
+    ]));
+
+    const result = await run('frage', []);
+
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0]).toEqual({ mimeType: 'image/png', data: 'SCREENSHOT' });
+  });
+});
+
 describe('Store-API', () => {
   it('addPendingApproval dedupliziert nach id (neueste Daten gewinnen)', () => {
     addPendingApproval({ id: 'a', toolName: 't1' });

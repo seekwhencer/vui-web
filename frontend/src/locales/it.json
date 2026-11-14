@@ -36,6 +36,10 @@
     "hideThinking": "nascondi ragionamento",
     "empty": "Nessun messaggio — chiedi qualcosa qui sopra.",
     "loading": "Ragionamento…",
+    "status": {
+      "working": "Lavora…",
+      "done": "Fatto"
+    },
     "error": {
       "network": "Connessione al server non riuscita.",
       "server": "Errore del server, riprova."
@@ -60,6 +64,11 @@
       "high": "Alto",
       "xhigh": "Molto alto",
       "max": "Max"
+    },
+    "image": {
+      "alt": "Immagine dal risultato dello strumento",
+      "error": "Impossibile caricare l'immagine.",
+      "close": "Chiudi"
     }
   },
   "approval": {
@@ -97,6 +106,8 @@
     "saved": "Salvato",
     "reset": "Reimposta",
     "uiHint": "Applicato immediatamente e salvato localmente",
+    "securityHint": "Le modifiche si applicano immediatamente",
+    "loading": "Caricamento…",
     "sections": {
       "basic": "Base",
       "decoding": "Decodifica",
@@ -106,6 +117,7 @@
       "badwords": "Parole da filtrare",
       "llm": "LLM",
       "mcp": "MCP",
+      "security": "Sicurezza",
       "ui": "UI"
     },
     "fields": {
@@ -139,6 +151,14 @@
       "llmPort": "Porta",
       "llmModel": "Modello",
       "llmSystemPrompt": "Prompt di sistema",
+      "llmVision": "Visione (auto/true/false)",
+      "maxToolTurns": "Max. roundate tool",
+      "maxToolResultBytes": "Max. risultato tool (byte)",
+      "maxToolImageBytes": "Max. dimensione immagine (byte)",
+      "toolTimeoutMs": "Timeout tool (ms)",
+      "maxPendingActions": "Max. azioni pendenti",
+      "approvalTtlMs": "TTL approvazione (ms)",
+      "securitySystemPrompt": "Prompt di sistema sicurezza",
       "radiusFactor": "Arrotondamento",
       "primaryHue": "Colore primario"
     }

@@ -72,7 +72,33 @@ function createMockLlm({ slow = false, refusal = false, model = null } = {}) {
     return srv;
 }
 
+/**
+ * Mock-Server für Ollamas `GET /api/show` (Capabilities-Endpoint).
+ * `capabilities` steuert, ob "vision" enthalten ist; `fail=true` → HTTP 500.
+ * `srv.requestCount` zählt die `/api/show`-Requests (Cache-Tests).
+ */
+function createShowServer({ capabilities = ['vision'], fail = false } = {}) {
+    const srv = http.createServer((req, res) => {
+        if (req.url && req.url.startsWith('/api/show')) {
+            srv.requestCount += 1;
+            if (fail) {
+                res.writeHead(500);
+                res.end('err');
+                return;
+            }
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ name: 'm', capabilities }));
+            return;
+        }
+        res.writeHead(404);
+        res.end('nf');
+    });
+    srv.requestCount = 0;
+    return srv;
+}
+
 let fastSrv, slowSrv, refusalSrv, modelSrv, fastPort, slowPort, refusalPort, modelPort;
+let showSrv, noVisionSrv, failSrv, showPort, noVisionPort, failPort;
 
 beforeAll(async () => {
     fastSrv = createMockLlm({ slow: false });
@@ -91,11 +117,24 @@ beforeAll(async () => {
     modelSrv = createMockLlm({ model: 'actual-model' });
     await new Promise((r) => modelSrv.listen(0, '127.0.0.1', r));
     modelPort = modelSrv.address().port;
+
+    // Ollama-Capability-Mocks für visionEnabled() (auto-Detection).
+    showSrv = createShowServer({ capabilities: ['vision'] });
+    await new Promise((r) => showSrv.listen(0, '127.0.0.1', r));
+    showPort = showSrv.address().port;
+
+    noVisionSrv = createShowServer({ capabilities: ['completion'] });
+    await new Promise((r) => noVisionSrv.listen(0, '127.0.0.1', r));
+    noVisionPort = noVisionSrv.address().port;
+
+    failSrv = createShowServer({ fail: true });
+    await new Promise((r) => failSrv.listen(0, '127.0.0.1', r));
+    failPort = failSrv.address().port;
 });
 
 afterAll(async () => {
-    for (const srv of [fastSrv, slowSrv, refusalSrv, modelSrv]) {
-        srv.destroyAll();
+    for (const srv of [fastSrv, slowSrv, refusalSrv, modelSrv, showSrv, noVisionSrv, failSrv]) {
+        srv.destroyAll?.();
         await new Promise((r) => srv.close(r));
     }
 });
@@ -201,5 +240,93 @@ describe('dynamisches Config-Reading', () => {
         // config.llm mutieren → Getter liefert neue Werte
         config.llm = { api: 'ollama', host: 'b', port: 2, model: 'y' };
         expect(llm.chatConfig).toEqual({ api: 'ollama', baseUrl: 'http://b:2', modelName: 'y' });
+    });
+});
+
+describe('Llm.buildToolMessage()', () => {
+    it('liefert den plain String zurück, wenn keine Bilder da sind', () => {
+        const llm = new Llm({ logger: silent });
+        expect(llm.buildToolMessage('TEXT', [], 'openai')).toBe('TEXT');
+        expect(llm.buildToolMessage('TEXT', undefined, 'ollama')).toBe('TEXT');
+    });
+
+    it('baut OpenAI-Content-Parts (image_url + Data-URL)', () => {
+        const llm = new Llm({ logger: silent });
+        const out = llm.buildToolMessage('TEXT', [{ mimeType: 'image/png', data: 'AAA' }], 'openai');
+        expect(out).toEqual([
+            { type: 'text', text: 'TEXT' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        ]);
+    });
+
+    it('baut Ollama-Content-Parts (image + images-Array)', () => {
+        const llm = new Llm({ logger: silent });
+        const out = llm.buildToolMessage('TEXT', [{ mimeType: 'image/png', data: 'AAA' }], 'ollama');
+        expect(out).toEqual([
+            { type: 'text', text: 'TEXT' },
+            { type: 'image', images: ['AAA'] },
+        ]);
+    });
+
+    it('baut mehrere Bilder in der Reihenfolge', () => {
+        const llm = new Llm({ logger: silent });
+        const out = llm.buildToolMessage('T', [
+            { mimeType: 'image/png', data: 'A' },
+            { mimeType: 'image/jpeg', data: 'B' },
+        ], 'openai');
+        expect(out).toHaveLength(3);
+        expect(out[0]).toEqual({ type: 'text', text: 'T' });
+        expect(out[1].image_url.url).toBe('data:image/png;base64,A');
+        expect(out[2].image_url.url).toBe('data:image/jpeg;base64,B');
+    });
+});
+
+describe('Llm.visionEnabled()', () => {
+    it('vision=true erzwingt true (ohne HTTP)', async () => {
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: 1, model: 'm', vision: true } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(true);
+    });
+
+    it('vision=false erzwingt false (ohne HTTP)', async () => {
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: 1, model: 'm', vision: false } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(false);
+    });
+
+    it('auto + OpenAI-kompatibel → false (kein Capabilities-Endpoint)', async () => {
+        const llm = new Llm({ config: { llm: { api: 'openai', host: '127.0.0.1', port: 1, model: 'm' } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(false);
+    });
+
+    it('auto + Ollama → true, wenn capabilities "vision" enthält', async () => {
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: showPort, model: 'm' } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(true);
+    });
+
+    it('auto + Ollama → false, wenn capabilities "vision" fehlt', async () => {
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: noVisionPort, model: 'm' } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(false);
+    });
+
+    it('auto + Ollama → false bei HTTP-Fehler (Graceful Degradation)', async () => {
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: failPort, model: 'm' } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(false);
+    });
+
+    it('cacht das Ergebnis (nur ein /api/show-Request)', async () => {
+        const before = showSrv.requestCount;
+        const llm = new Llm({ config: { llm: { api: 'ollama', host: '127.0.0.1', port: showPort, model: 'm' } }, logger: silent });
+        expect(await llm.visionEnabled()).toBe(true);
+        expect(await llm.visionEnabled()).toBe(true);
+        expect(showSrv.requestCount).toBe(before + 1);
+    });
+
+    it('invalidiert den Cache bei Modell-Wechsel', async () => {
+        const before = showSrv.requestCount;
+        const config = { llm: { api: 'ollama', host: '127.0.0.1', port: showPort, model: 'm' } };
+        const llm = new Llm({ config, logger: silent });
+        expect(await llm.visionEnabled()).toBe(true);
+        config.llm.model = 'other-model';
+        expect(await llm.visionEnabled()).toBe(true);
+        expect(showSrv.requestCount).toBe(before + 2);
     });
 });

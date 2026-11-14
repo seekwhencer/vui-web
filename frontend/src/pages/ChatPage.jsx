@@ -10,12 +10,13 @@ import ChatInput from '../components/ChatInput.jsx';
 import ChatView from '../components/ChatView.jsx';
 import ChatHistory from '../components/ChatHistory.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import StreamStatus from '../components/StreamStatus.jsx';
 
 export default function ChatPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { thinking, answer, pending, error, run, setResult, abort } = useChatStream();
+  const { thinking, answer, pending, error, completedAt, run, setResult, abort } = useChatStream();
   const {
     conversations,
     activeId,
@@ -75,6 +76,10 @@ export default function ChatPage() {
       error: result.error ? result.error.message || String(result.error) : null,
       tokens: result.tokens,
       model: result.model,
+      // Bilder (session-only): in den In-Memory-Turn übernehmen, damit sie
+      // nach der Finalisierung sichtbar bleiben (persist() stript sie vor
+      // dem localStorage-Write — nach Reload weg, Turn bleibt).
+      images: result.images || [],
     });
   };
 
@@ -167,6 +172,7 @@ export default function ChatPage() {
             >
               <History size={16} />
             </button>
+            <StreamStatus pending={pending} completedAt={completedAt} error={error} />
             <h2>{t('chat.title')}</h2>
             {items.length > 0 && (
               <button type="button" className="chat__clear" onClick={handleClear}>

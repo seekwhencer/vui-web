@@ -34,7 +34,11 @@ beforeAll(async () => {
     app = express();
     appHttpServer = createHttpServer(app);
 
-    mcp = new McpManager({ config, logger: silent });
+    // Mock-MCP: liefert ein erfolgreiches Tool-Ergebnis (keine echten Server).
+    mcp = {
+        connectAll: async () => { },
+        callTool: async () => ({ content: 'TOOL_RESULT', isError: false }),
+    };
     store = new ActionStore(join(dir, 'actions.json'), silent);
     audit = new Audit(join(dir, 'audit.jsonl'), silent);
     policy = new PolicyEngine({ config, logger: silent });
@@ -105,12 +109,12 @@ describe('Approval-Endpunkte (Phase 2)', () => {
         expect(detail.data.arguments).toEqual({ city: 'Berlin' });
         expect(detail.data.status).toBe('PENDING_APPROVAL');
 
-        // POST /api/actions/:id/approve → APPROVED.
+        // POST /api/actions/:id/approve → APPROVED → COMPLETED (ausgeführt).
         const approveRes = await json('POST', `/api/actions/${action.id}/approve`, {});
         expect(approveRes.status).toBe(200);
         const approved = await approveRes.json();
         expect(approved.success).toBe(true);
-        expect(approved.data.status).toBe('APPROVED');
+        expect(approved.data.status).toBe('COMPLETED');
         expect(approved.data.approvedBy).toBe('local');
         expect(approved.data.approvedAt).toBeTruthy();
 

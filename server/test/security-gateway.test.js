@@ -91,6 +91,43 @@ describe('ExecutionGateway', () => {
             expect(result.content).toBe('TOOL_RESULT');
             expect(result.isError).toBe(false);
         });
+
+        it('behält Bilder unter maxToolImageBytes', async () => {
+            config.security.maxToolImageBytes = 1024;
+            mockMcp.callTool = async () => ({
+                content: 'ok',
+                images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }],
+                isError: false,
+            });
+            const result = await gateway.executeRead('weather', 'get_weather', {});
+            expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
+            expect(result.content).toBe('ok');
+        });
+
+        it('wirft Bilder über maxToolImageBytes weg + Hinweis im Text', async () => {
+            config.security.maxToolImageBytes = 10;
+            mockMcp.callTool = async () => ({
+                content: 'ok',
+                images: [{ mimeType: 'image/png', data: 'a'.repeat(100) }],
+                isError: false,
+            });
+            const result = await gateway.executeRead('weather', 'get_weather', {});
+            expect(result.images).toEqual([]);
+            expect(result.content).toContain('[IMAGE DROPPED');
+        });
+
+        it('Text-Limit bleibt unabhängig vom Bild-Limit', async () => {
+            config.security.maxToolResultBytes = 100;
+            config.security.maxToolImageBytes = 1024;
+            mockMcp.callTool = async () => ({
+                content: 'x'.repeat(1000),
+                images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }],
+                isError: false,
+            });
+            const result = await gateway.executeRead('weather', 'get_weather', {});
+            expect(result.content).toContain('[TRUNCATED');
+            expect(result.images).toEqual([{ mimeType: 'image/png', data: 'aW1hZ2U=' }]);
+        });
     });
 
     describe('executeApproved', () => {
@@ -113,10 +150,10 @@ describe('ExecutionGateway', () => {
             const action = await createApproved();
             const result = await gateway.executeApproved(action.id);
             expect(result.status).toBe('COMPLETED');
-            expect(result.result).toEqual({ content: 'TOOL_RESULT', isError: false });
+            expect(result.result).toEqual({ content: 'TOOL_RESULT', images: [], isError: false });
             const stored = await store.get(action.id);
             expect(stored.status).toBe('COMPLETED');
-            expect(stored.result).toEqual({ content: 'TOOL_RESULT', isError: false });
+            expect(stored.result).toEqual({ content: 'TOOL_RESULT', images: [], isError: false });
             const entries = await audit.tail(100);
             expect(entries.some((e) => e.event === 'EXECUTION_COMPLETED' && e.actionId === action.id && e.metadata.toolName === 'set_weather')).toBe(true);
         });
@@ -171,7 +208,7 @@ describe('ExecutionGateway', () => {
             const action = await createApproved();
             const result = await gateway.executeApproved(action.id);
             expect(result.status).toBe('FAILED');
-            expect(result.result).toEqual({ content: 'tool exploded', isError: true });
+            expect(result.result).toEqual({ content: 'tool exploded', images: [], isError: true });
             const stored = await store.get(action.id);
             expect(stored.status).toBe('FAILED');
             const entries = await audit.tail(100);
@@ -188,6 +225,37 @@ describe('ExecutionGateway', () => {
             expect(stored.status).toBe('FAILED');
             const entries = await audit.tail(100);
             expect(entries.some((e) => e.event === 'EXECUTION_FAILED' && e.actionId === action.id)).toBe(true);
+        });
+
+        it('executeApproved behält Bilder unter maxToolImageBytes', async () => {
+            config.security.maxToolImageBytes = 1024;
+            mockMcp.callTool = async () => ({
+                content: 'TOOL_RESULT',
+                images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }],
+                isError: false,
+            });
+            const action = await createApproved();
+            const result = await gateway.executeApproved(action.id);
+            expect(result.status).toBe('COMPLETED');
+            expect(result.result).toEqual({
+                content: 'TOOL_RESULT',
+                images: [{ mimeType: 'image/png', data: 'aW1hZ2U=' }],
+                isError: false,
+            });
+        });
+
+        it('executeApproved wirft Bilder über maxToolImageBytes weg + Hinweis', async () => {
+            config.security.maxToolImageBytes = 10;
+            mockMcp.callTool = async () => ({
+                content: 'TOOL_RESULT',
+                images: [{ mimeType: 'image/png', data: 'a'.repeat(100) }],
+                isError: false,
+            });
+            const action = await createApproved();
+            const result = await gateway.executeApproved(action.id);
+            expect(result.status).toBe('COMPLETED');
+            expect(result.result.images).toEqual([]);
+            expect(result.result.content).toContain('[IMAGE DROPPED');
         });
     });
 });

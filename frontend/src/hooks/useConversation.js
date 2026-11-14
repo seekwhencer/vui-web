@@ -54,9 +54,22 @@ function loadInitial() {
   return { conversations: [], activeId: null };
 }
 
+// Bilder sind session-only: localStorage hat ~5 MB Quota, ein einziges
+// Base64-Bild sprengt das. persist() stript `images` aus den Turns; der
+// In-Memory-State behält sie (Live-Anzeige bleibt, nach Reload weg).
+function stripImages(state) {
+  return {
+    ...state,
+    conversations: state.conversations.map((c) => ({
+      ...c,
+      turns: c.turns.map(({ images, ...rest }) => rest),
+    })),
+  };
+}
+
 function persist(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripImages(state)));
   } catch (_) {}
 }
 
@@ -204,3 +217,6 @@ export default function useConversation() {
     finalizePending,
   };
 }
+
+// Named-Exports (für Tests + direkte Nutzung ohne Hook).
+export { addTurn, updateTurn, removeConversation, finalizePending, select, startNew, getSnapshot };

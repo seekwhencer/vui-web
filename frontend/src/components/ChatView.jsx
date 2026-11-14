@@ -1,8 +1,10 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ThinkBlock from './ThinkBlock';
 import MarkdownRenderer from './Markdown';
 import ApprovalDialog from './ApprovalDialog.jsx';
+import ChatImage from './ChatImage.jsx';
+import ImageLightbox from './ImageLightbox.jsx';
 import useChatStream from '../hooks/useChatStream.js';
 
 function errorMessage(t, error) {
@@ -39,8 +41,12 @@ export default function ChatView({ items, thinking, answer, error, conversationI
 
   // Zero-Trust: offene Freigabe-Aktionen aus dem (modulebenen) Store —
   // sie überleben Seitenwechsel. Der Dialog zeigt die erste offene Aktion.
-  const { pendingApprovals, clearPendingApproval } = useChatStream();
+  // `images` = Tool-Ergebnis-Bilder des laufenden Turns (Live-Stream).
+  const { pendingApprovals, clearPendingApproval, images } = useChatStream();
   const pendingApproval = pendingApprovals[0] || null;
+
+  // Lightbox: aktuelles Bild oder null (geschlossen).
+  const [lightbox, setLightbox] = useState(null);
 
   const turns = items || [];
 
@@ -66,7 +72,7 @@ export default function ChatView({ items, thinking, answer, error, conversationI
     if (nearBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [turns.length, thinking, answer]);
+  }, [turns.length, thinking, answer, images]);
 
   if (turns.length === 0) {
     return (
@@ -77,6 +83,7 @@ export default function ChatView({ items, thinking, answer, error, conversationI
         {pendingApproval && (
           <ApprovalDialog action={pendingApproval} onClose={clearPendingApproval} />
         )}
+        {lightbox && <ImageLightbox image={lightbox} onClose={() => setLightbox(null)} />}
       </>
     );
   }
@@ -91,6 +98,8 @@ export default function ChatView({ items, thinking, answer, error, conversationI
           const itemError = isLive
             ? (error ? errorMessage(t, error) : null)
             : (item.error || null);
+          // Bilder: Live-Turn aus dem Stream-Store, sonst aus dem gespeicherten Turn.
+          const itemImages = isLive ? (images || []) : (item.images || []);
 
           return (
             <div className="turn" key={item.id} data-turn-id={item.id}>
@@ -102,11 +111,20 @@ export default function ChatView({ items, thinking, answer, error, conversationI
                 {itemThinking && <ThinkBlock content={itemThinking} />}
                 {itemError ? (
                   <p className="chat-view__error-text">{itemError}</p>
-                ) : itemAnswer ? (
+                ) : itemAnswer || itemImages.length > 0 ? (
                   <>
-                    <div className="msg__bubble">
-                      <MarkdownRenderer text={itemAnswer} />
-                    </div>
+                    {itemAnswer && (
+                      <div className="msg__bubble">
+                        <MarkdownRenderer text={itemAnswer} />
+                      </div>
+                    )}
+                    {itemImages.length > 0 && (
+                      <div className="msg__images">
+                        {itemImages.map((img, i) => (
+                          <ChatImage key={i} {...img} onOpen={setLightbox} />
+                        ))}
+                      </div>
+                    )}
                     {item.tokens != null && (
                       <div
                         className="turn__meta"
@@ -133,6 +151,7 @@ export default function ChatView({ items, thinking, answer, error, conversationI
       {pendingApproval && (
         <ApprovalDialog action={pendingApproval} onClose={clearPendingApproval} />
       )}
+      {lightbox && <ImageLightbox image={lightbox} onClose={() => setLightbox(null)} />}
     </>
   );
 }

@@ -194,41 +194,62 @@ class McpManager {
 
     /**
      * Mappt MCP-Tools auf OpenAI-Function-Tools (für den LLM-Request).
+     *
+     * Jedes Tool-Schema bekommt ein optionales `include_image`-Boolean, das
+     * das LLM sieht: Es entscheidet pro Call, ob es das zurückgegebene Bild
+     * sehen will. `include_image` ist KEIN MCP-Tool-Arg — der Server stript
+     * es vor dem Forward (das MCP-Tool sieht es nie).
      * @returns {Array<object>}
      */
     toOpenAITools() {
-        return this.listTools().map((t) => ({
-            type: 'function',
-            function: {
-                name: t.name,
-                description: t.description,
-                parameters: t.inputSchema,
-            },
-        }));
+        return this.listTools().map((t) => {
+            const props = { ...(t.inputSchema?.properties || {}) };
+            props.include_image = {
+                type: 'boolean',
+                description: 'Set to true if you need to SEE the returned image to answer well. The image is always shown to the user regardless.',
+            };
+            return {
+                type: 'function',
+                function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: { ...t.inputSchema, properties: props },
+                },
+            };
+        });
     }
 
     /**
      * Führt einen Tool-Call aus.
+     *
+     * Liefert ein strukturiertes Ergebnis: `content` ist der joined Text
+     * (Backward-Compat), `images` die extrahierten `ImageContent`-Blöcke
+     * (`[]` wenn keine). `AudioContent`/`ResourceLink`/`EmbeddedResource`
+     * bleiben ignoriert (Scope: nur `ImageContent`).
      * @param {string} serverId
      * @param {string} toolName - Original-Tool-Name (ohne Prefix)
      * @param {object} arguments_ - Argumente
-     * @returns {Promise<{content: string, isError: boolean}>}
+     * @returns {Promise<{content: string, images: Array<{mimeType: string, data: string}>, isError: boolean}>}
      */
     async callTool(serverId, toolName, arguments_) {
         const conn = this.connections.get(serverId);
         if (!conn || conn.status !== 'connected') {
-            return { content: `MCP-Server '${serverId}' ist nicht verbunden.`, isError: true };
+            return { content: `MCP-Server '${serverId}' ist nicht verbunden.`, images: [], isError: true };
         }
         try {
             const result = await conn.client.callTool({ name: toolName, arguments: arguments_ || {} });
-            const content = (result.content || [])
+            const blocks = result.content || [];
+            const content = blocks
                 .filter((block) => block.type === 'text')
                 .map((block) => block.text)
                 .join('\n');
-            return { content: content || '', isError: result.isError === true };
+            const images = blocks
+                .filter((block) => block.type === 'image' && typeof block.data === 'string' && typeof block.mimeType === 'string')
+                .map((block) => ({ mimeType: block.mimeType, data: block.data }));
+            return { content: content || '', images, isError: result.isError === true };
         } catch (err) {
             this.logger.error(this.label, `Tool-Call fehlgeschlagen: ${serverId}/${toolName}`, { error: err.message });
-            return { content: err.message, isError: true };
+            return { content: err.message, images: [], isError: true };
         }
     }
 

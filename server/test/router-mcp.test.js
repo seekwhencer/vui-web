@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Router } from '../src/Router/index.js';
 import { Config } from '../src/Config.js';
+import { Llm } from '../src/Llm.js';
 
 // FrontendRouter.init() startet Vite, wenn NODE_ENV=development.
 // Für deterministische Tests ohne Vite (und sauberen Exit) NODE_ENV=test erzwingen.
@@ -113,14 +114,22 @@ function makeMockMcp(config) {
 }
 
 /**
- * Mock-Llm: deckt detectToolSupport/chatWithTools/chat ab.
+ * Mock-Llm: deckt detectToolSupport/chatWithTools/chat/streamChatWithTools ab.
  * `turns` ist eine Warteschlange von Antworten für chatWithTools (Tool-Loop).
+ * `streamTurns` analog für streamChatWithTools (SSE-Tool-Loop).
+ * `vision` steuert visionEnabled(); `api` den Backend-Typ für buildToolMessage.
+ * `buildToolMessage` delegiert an die ECHTE Llm-Implementierung, damit die
+ * Tests das reale Multimodal-Format prüfen.
  */
-function makeMockLlm({ toolSupport = true, turns = [] } = {}) {
-    const state = { chatWithToolsCalls: [], chatCalls: [] };
+function makeMockLlm({ toolSupport = true, turns = [], streamTurns = [], vision = true, api = 'openai' } = {}) {
+    const state = { chatWithToolsCalls: [], chatCalls: [], streamChatWithToolsCalls: [] };
+    const realLlm = new Llm({ logger: silent });
     return {
         state,
         detectToolSupport: async () => toolSupport,
+        visionEnabled: async () => vision,
+        chatConfig: { api, baseUrl: 'http://mock', modelName: 'm' },
+        buildToolMessage: (content, images, backend) => realLlm.buildToolMessage(content, images, backend),
         chatWithTools: async (messages, tools, options) => {
             state.chatWithToolsCalls.push({ messages, tools, options });
             return turns.shift() || { content: 'DEFAULT', toolCalls: [] };
@@ -129,7 +138,30 @@ function makeMockLlm({ toolSupport = true, turns = [] } = {}) {
             state.chatCalls.push({ messages, options });
             return 'PLAIN_CHAT_ANSWER';
         },
+        streamChatWithTools: async function* (messages, tools, options) {
+            state.streamChatWithToolsCalls.push({ messages, tools, options });
+            const turn = streamTurns.shift() || { content: 'DEFAULT', toolCalls: [] };
+            yield { phase: 'turn', content: turn.content, toolCalls: turn.toolCalls, reasoning: '' };
+        },
     };
+}
+
+/**
+ * Parst eine SSE-Antwort (`event: X\ndata: {...}\n\n`) in ein Array von
+ * `{ event, data }`-Objekten.
+ */
+function parseSSE(text) {
+    const events = [];
+    for (const block of text.split('\n\n')) {
+        let event = 'message';
+        let data = '';
+        for (const line of block.split('\n')) {
+            if (line.startsWith('event: ')) event = line.slice(7);
+            else if (line.startsWith('data: ')) data += line.slice(6);
+        }
+        if (data) events.push({ event, data: JSON.parse(data) });
+    }
+    return events;
 }
 
 let dir, configPath, config, app, appHttpServer, router, appPort;
@@ -410,5 +442,234 @@ describe('Chat-Tool-Loop (POST /api/chat)', () => {
         expect(mcp.state.callToolCalls).toHaveLength(0);
         expect(llm.state.chatWithToolsCalls).toHaveLength(0);
         expect(llm.state.chatCalls).toHaveLength(1);
+    });
+});
+
+describe('Chat-Tool-Loop mit Vision (POST /api/chat)', () => {
+    const weatherServer = () => ({ id: 'weather', name: 'Weather', enabled: true, url: 'http://localhost:8080/mcp', headers: {}, transport: 'auto' });
+    const toolCall = (argsObj) => ({ id: 'call_1', type: 'function', function: { name: 'weather__get_weather', arguments: JSON.stringify(argsObj) } });
+    const image = { mimeType: 'image/png', data: 'AAA' };
+    // Fix 4: SUCCESS-Meldung wird vor den Tool-Content vorangestellt (LLM-facing).
+    const successContent = `SUCCESS: Tool 'weather__get_weather' abgeschlossen. 1 Bild(er) erfasst (0 KB). Die Aufgabe ist erledigt — antworte dem Nutzer, rufe das Tool NICHT erneut auf.\n\nTOOL_RESULT`;
+
+    function setupMcp() {
+        config.mcpServers = [weatherServer()];
+        const mcp = makeMockMcp(config);
+        mcp.connections.set('weather', {
+            server: config.mcpServers[0],
+            tools: [{ name: 'get_weather', description: 'Get weather', inputSchema: { type: 'object', properties: {} } }],
+            status: 'connected', error: null,
+        });
+        mcp.state.callToolResult = { content: 'TOOL_RESULT', isError: false, images: [image] };
+        router.mcp = mcp;
+        return mcp;
+    }
+
+    it('include_image:true + Vision → Multimodal-Parts (OpenAI) an das LLM', async () => {
+        const mcp = setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: true,
+            api: 'openai',
+            turns: [
+                { content: null, toolCalls: [toolCall({ city: 'Berlin', include_image: true })] },
+                { content: 'FINAL_ANSWER', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const r = await json('POST', '/api/chat', { question: 'What is the weather in Berlin?' });
+        expect(r.status).toBe(200);
+        const j = await r.json();
+        expect(j.data.answer).toBe('FINAL_ANSWER');
+
+        // `include_image` wurde VOR dem Forward gestrippt (MCP-Tool sieht es nie)
+        expect(mcp.state.callToolCalls).toHaveLength(1);
+        expect(mcp.state.callToolCalls[0].args).toEqual({ city: 'Berlin' });
+
+        // Zweite LLM-Runde erhält Multimodal-Content-Parts (mit SUCCESS-Präfix, Fix 4)
+        const secondCall = llm.state.chatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toEqual([
+            { type: 'text', text: successContent },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        ]);
+    });
+
+    it('include_image:false → plain String an das LLM (Bilder nur für den Client)', async () => {
+        setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: true,
+            turns: [
+                { content: null, toolCalls: [toolCall({ city: 'Berlin', include_image: false })] },
+                { content: 'FINAL_ANSWER', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const r = await json('POST', '/api/chat', { question: 'What is the weather in Berlin?' });
+        expect(r.status).toBe(200);
+
+        const secondCall = llm.state.chatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toBe(successContent);
+    });
+
+    it('include_image:true + vision:false → plain String (Capability-Gate)', async () => {
+        setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: false,
+            turns: [
+                { content: null, toolCalls: [toolCall({ city: 'Berlin', include_image: true })] },
+                { content: 'FINAL_ANSWER', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const r = await json('POST', '/api/chat', { question: 'What is the weather in Berlin?' });
+        expect(r.status).toBe(200);
+
+        const secondCall = llm.state.chatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toBe(successContent);
+    });
+
+    it('include_image:true + Vision → Ollama-Parts bei api=ollama', async () => {
+        setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: true,
+            api: 'ollama',
+            turns: [
+                { content: null, toolCalls: [toolCall({ city: 'Berlin', include_image: true })] },
+                { content: 'FINAL_ANSWER', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const r = await json('POST', '/api/chat', { question: 'What is the weather in Berlin?' });
+        expect(r.status).toBe(200);
+
+        const secondCall = llm.state.chatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toEqual([
+            { type: 'text', text: successContent },
+            { type: 'image', images: ['AAA'] },
+        ]);
+    });
+});
+
+describe('Chat-Tool-Loop mit Vision (POST /api/chat/stream)', () => {
+    const weatherServer = () => ({ id: 'weather', name: 'Weather', enabled: true, url: 'http://localhost:8080/mcp', headers: {}, transport: 'auto' });
+    const toolCall = (argsObj) => ({ id: 'call_1', type: 'function', function: { name: 'weather__get_weather', arguments: JSON.stringify(argsObj) } });
+    const image = { mimeType: 'image/png', data: 'AAA' };
+    // Fix 4: SUCCESS-Meldung wird vor den Tool-Content vorangestellt (LLM-facing).
+    const successContent = `SUCCESS: Tool 'weather__get_weather' abgeschlossen. 1 Bild(er) erfasst (0 KB). Die Aufgabe ist erledigt — antworte dem Nutzer, rufe das Tool NICHT erneut auf.\n\nTOOL_RESULT`;
+
+    function setupMcp() {
+        config.mcpServers = [weatherServer()];
+        const mcp = makeMockMcp(config);
+        mcp.connections.set('weather', {
+            server: config.mcpServers[0],
+            tools: [{ name: 'get_weather', description: 'Get weather', inputSchema: { type: 'object', properties: {} } }],
+            status: 'connected', error: null,
+        });
+        mcp.state.callToolResult = { content: 'TOOL_RESULT', isError: false, images: [image] };
+        router.mcp = mcp;
+        return mcp;
+    }
+
+    async function streamChat(question) {
+        const res = await fetch(`${base()}/api/chat/stream`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ question }),
+        });
+        return { status: res.status, events: parseSSE(await res.text()) };
+    }
+
+    it('sendet tool_result IMMER mit images (Pfad A: Client-Anzeige)', async () => {
+        const mcp = setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: true,
+            streamTurns: [
+                { content: '', toolCalls: [toolCall({ city: 'Berlin' })] },
+                { content: 'FINAL', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const { status, events } = await streamChat('What is the weather in Berlin?');
+        expect(status).toBe(200);
+
+        const toolResult = events.find((e) => e.event === 'tool_result');
+        expect(toolResult).toBeDefined();
+        expect(toolResult.data.id).toBe('call_1');
+        expect(toolResult.data.content).toBe('TOOL_RESULT');
+        expect(toolResult.data.isError).toBe(false);
+        // Bilder IMMER im SSE-Event — auch ohne include_image
+        expect(toolResult.data.images).toEqual([image]);
+
+        // `include_image` fehlt → LLM erhält plain String (mit SUCCESS-Präfix, Fix 4)
+        const secondCall = llm.state.streamChatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toBe(successContent);
+    });
+
+    it('include_image:true + Vision → Multimodal-Parts an das LLM (SSE-Loop)', async () => {
+        const mcp = setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: true,
+            api: 'openai',
+            streamTurns: [
+                { content: '', toolCalls: [toolCall({ city: 'Berlin', include_image: true })] },
+                { content: 'FINAL', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const { status, events } = await streamChat('What is the weather in Berlin?');
+        expect(status).toBe(200);
+
+        // `include_image` wurde vor dem Forward gestrippt
+        expect(mcp.state.callToolCalls[0].args).toEqual({ city: 'Berlin' });
+
+        // Zweite LLM-Runde erhält Multimodal-Content-Parts (mit SUCCESS-Präfix, Fix 4)
+        const secondCall = llm.state.streamChatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toEqual([
+            { type: 'text', text: successContent },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        ]);
+
+        // SSE-Events: tool_call → tool_result → done
+        const eventNames = events.map((e) => e.event);
+        expect(eventNames).toContain('tool_call');
+        expect(eventNames).toContain('tool_result');
+        expect(eventNames).toContain('done');
+    });
+
+    it('include_image:true + vision:false → plain String (Capability-Gate, SSE-Loop)', async () => {
+        setupMcp();
+        const llm = makeMockLlm({
+            toolSupport: true,
+            vision: false,
+            streamTurns: [
+                { content: '', toolCalls: [toolCall({ city: 'Berlin', include_image: true })] },
+                { content: 'FINAL', toolCalls: [] },
+            ],
+        });
+        router.llm = llm;
+
+        const { status } = await streamChat('What is the weather in Berlin?');
+        expect(status).toBe(200);
+
+        const secondCall = llm.state.streamChatWithToolsCalls[1];
+        const toolMsg = secondCall.messages.find((m) => m.role === 'tool');
+        expect(toolMsg.content).toBe(successContent);
     });
 });

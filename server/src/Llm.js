@@ -21,6 +21,8 @@ class Llm {
         // Tool-Support-Cache: null = unbekannt, true/false = erkannt.
         this._toolSupport = null;
         this._toolSupportSignature = undefined;
+        // Vision-Capability-Cache: undefined = unbekannt, true/false = erkannt.
+        this._visionCache = undefined;
     }
 
     /**
@@ -37,11 +39,13 @@ class Llm {
             : `http://${host}:${port}`;
         const cfg = { api, baseUrl: this.normalizeUrl(base), modelName: llm.model || '' };
 
-        // Cache-Invalidierung: Bei Änderung von api/baseUrl/modelName ist das
-        // erkannte Tool-Support-Ergebnis nicht mehr gültig → zurücksetzen.
+        // Cache-Invalidierung: Bei Änderung von api/baseUrl/modelName sind die
+        // erkannten Capability-Ergebnisse (Tool-Support, Vision) nicht mehr
+        // gültig → zurücksetzen.
         const signature = `${api}|${cfg.baseUrl}|${cfg.modelName}`;
         if (this._toolSupportSignature !== undefined && this._toolSupportSignature !== signature) {
             this._toolSupport = null;
+            this._visionCache = undefined;
         }
         this._toolSupportSignature = signature;
 
@@ -522,6 +526,69 @@ class Llm {
 
         this.logger.log(this.label, `Tool-Support: ${this._toolSupport ? 'ja' : 'nein'}`);
         return this._toolSupport;
+    }
+
+    /**
+     * Capability-Gate: Kann das aktuelle Modell Vision?
+     * `llm.vision` TriState (`auto`/`true`/`false`, Default `auto`):
+     * - `true`/`false` erzwingen das Ergebnis.
+     * - `auto` + Ollama → `GET /api/show?name=<modell>`, `capabilities` enthält `"vision"`?
+     * - `auto` + OpenAI-kompatibel → `false` (kein Capabilities-Endpoint).
+     * Das Ergebnis wird gecacht und bei Modell-/Backend-Wechsel invalidiert
+     * (siehe `chatConfig`-Getter). Fehler → `false` (Graceful Degradation).
+     * @returns {Promise<boolean>} true = Modell kann Vision, false = nicht
+     */
+    async visionEnabled() {
+        const v = this.config?.llm?.vision ?? 'auto';
+        if (v === true) return true;
+        if (v === false) return false;
+
+        // Zuerst `chatConfig` aufrufen: Der Getter prüft die Signatur
+        // (api|baseUrl|model) und invalidiert den Cache bei Modell-/Backend-Wechsel.
+        this.chatConfig;
+        if (this._visionCache !== undefined) return this._visionCache;
+
+        const cfg = this.chatConfig;
+        if (cfg.api === 'ollama') {
+            try {
+                const res = await axios.get(`${cfg.baseUrl}/api/show`, {
+                    params: { name: cfg.modelName },
+                });
+                this._visionCache = Array.isArray(res.data?.capabilities)
+                    && res.data.capabilities.includes('vision');
+            } catch {
+                this._visionCache = false;
+            }
+        } else {
+            this._visionCache = false;
+        }
+
+        this.logger.log(this.label, `Vision: ${this._visionCache ? 'ja' : 'nein'}`);
+        return this._visionCache;
+    }
+
+    /**
+     * Baut die `role:'tool'`-Message je Backend (Multimodal-Content-Parts).
+     * - Kein Bild → plain String (wie heute, Backward-Compat).
+     * - Ollama: `[{ type:'text', text }, { type:'image', images: [base64] }]`
+     * - OpenAI-kompatibel: `[{ type:'text', text }, { type:'image_url', image_url: { url: 'data:<mime>;base64,<data>' } }]`
+     * @param {string} content - Der (ggf. untrusted-gepackte) Text des Tool-Ergebnisses
+     * @param {Array<{mimeType: string, data: string}>} [images] - Base64-Bilder
+     * @param {string} [backend] - 'ollama' | 'openai' (aus `chatConfig.api`)
+     * @returns {string|Array<object>} Plain String oder Content-Parts-Array
+     */
+    buildToolMessage(content, images = [], backend) {
+        if (!images.length) return content;
+        if (backend === 'ollama') {
+            return [
+                { type: 'text', text: content },
+                ...images.map((i) => ({ type: 'image', images: [i.data] })),
+            ];
+        }
+        return [
+            { type: 'text', text: content },
+            ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mimeType};base64,${i.data}` } })),
+        ];
     }
 }
 

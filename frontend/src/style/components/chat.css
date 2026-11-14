@@ -262,6 +262,67 @@
   color: var(--color-error);
 }
 
+/* Stream-Status (Kopfzeile): "Arbeitet…" (läuft) / "Fertig" (done-Event) */
+.stream-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stream-status--working {
+  color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+}
+
+.stream-status__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+  animation: stream-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes stream-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+.stream-status--done {
+  color: var(--color-success);
+  background-color: var(--color-success-subtle);
+  animation: stream-done 4s ease forwards;
+}
+
+@keyframes stream-done {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  8% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Verlauf: scrollbare Nachrichtenliste */
 .chat-view {
   flex: 1;
@@ -530,7 +591,6 @@
 /* Markdown-Ausgabe */
 .markdown {
   font-size: var(--fs-md);
-  line-height: 1.6;
   color: var(--color-text);
 }
 
@@ -612,14 +672,15 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   overflow-x: auto;
+  line-height: 1rem;
 }
 
 .markdown pre code {
   background: transparent;
   border: none;
   padding: 0;
-  font-size: var(--fs-sm);
-  line-height: 1.5;
+  font-size: var(--fs-xs);
+  line-height: 1rem;
 }
 
 /* Schmal: History wird zum Drawer (Toggle in der Kopfzeile) */
@@ -667,4 +728,78 @@
   .msg__bubble {
     max-width: 95%;
   }
+}
+
+/* Tool-Ergebnis-Bilder (ImageContent): Thumbnails unter der Antwort */
+.msg__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.msg__image {
+  max-width: 240px;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-alt);
+  cursor: zoom-in;
+}
+
+.msg__image--error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  min-height: 60px;
+  padding: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* Lightbox: Vollbild-Overlay über dem Chat */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+}
+
+.lightbox__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.lightbox__close:hover {
+  background-color: var(--color-surface-alt);
+  border-color: var(--color-border-strong);
+  color: var(--color-error);
 }

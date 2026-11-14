@@ -36,6 +36,10 @@
     "hideThinking": "hide thinking",
     "empty": "No messages yet — ask something above.",
     "loading": "Thinking…",
+    "status": {
+      "working": "Working…",
+      "done": "Done"
+    },
     "error": {
       "network": "Connection to server failed.",
       "server": "Server error, please try again."
@@ -60,6 +64,11 @@
       "high": "High",
       "xhigh": "X-High",
       "max": "Max"
+    },
+    "image": {
+      "alt": "Image from tool result",
+      "error": "Image could not be loaded.",
+      "close": "Close"
     }
   },
   "approval": {
@@ -97,6 +106,8 @@
     "saved": "Saved",
     "reset": "Reset",
     "uiHint": "Applied immediately and saved locally",
+    "securityHint": "Changes apply immediately",
+    "loading": "Loading…",
     "sections": {
       "basic": "Basic",
       "decoding": "Decoding",
@@ -106,6 +117,7 @@
       "badwords": "Badwords",
       "llm": "LLM",
       "mcp": "MCP",
+      "security": "Security",
       "ui": "UI"
     },
     "fields": {
@@ -139,6 +151,14 @@
       "llmPort": "Port",
       "llmModel": "Model",
       "llmSystemPrompt": "System prompt",
+      "llmVision": "Vision (auto/true/false)",
+      "maxToolTurns": "Max. tool rounds",
+      "maxToolResultBytes": "Max. tool result (bytes)",
+      "maxToolImageBytes": "Max. image size (bytes)",
+      "toolTimeoutMs": "Tool timeout (ms)",
+      "maxPendingActions": "Max. pending actions",
+      "approvalTtlMs": "Approval TTL (ms)",
+      "securitySystemPrompt": "Security system prompt",
       "radiusFactor": "Roundness",
       "primaryHue": "Primary color"
     }

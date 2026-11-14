@@ -53,16 +53,24 @@ class ExecutionGateway {
         return Number.isFinite(m) && m > 0 ? m : 65536;
     }
 
+    /** Liest das Bild-Größenlimit aus der Config (Default 2 MB). */
+    #maxImageBytes() {
+        const m = this.config?.security?.maxToolImageBytes;
+        return Number.isFinite(m) && m > 0 ? m : 2097152;
+    }
+
     /**
      * Führt ein read-Klasse-Tool aus (direkt, ohne Approval).
      * - Timeout (config.security.toolTimeoutMs)
-     * - Ergebnis-Größenlimit (config.security.maxToolResultBytes)
+     * - Text-Größenlimit (config.security.maxToolResultBytes)
+     * - Bild-Größenlimit (config.security.maxToolImageBytes) — zu große
+     *   Bilder werden verworfen + Text-Hinweis (keine Truncation)
      * - Audit: EXECUTION_COMPLETED / EXECUTION_FAILED
      *
      * @param {string} serverId
      * @param {string} toolName
      * @param {object} [args]
-     * @returns {Promise<{content: string, isError: boolean}>}
+     * @returns {Promise<{content: string, images: Array<{mimeType: string, data: string}>, isError: boolean}>}
      */
     async executeRead(serverId, toolName, args = {}) {
         const timeoutMs = this.#timeoutMs();
@@ -88,7 +96,7 @@ class ExecutionGateway {
             await this.#auditSafe('EXECUTION_COMPLETED', { toolName }, null);
         }
 
-        // Größenlimit durchsetzen (Truncation + Hinweis).
+        // Text-Größenlimit durchsetzen (Truncation + Hinweis).
         let content = result.content;
         const maxBytes = this.#maxResultBytes();
         const buf = Buffer.from(content, 'utf8');
@@ -97,7 +105,17 @@ class ExecutionGateway {
                 + '\n[TRUNCATED: Ergebnis war größer als das erlaubte Limit]';
         }
 
-        return { content, isError: result.isError };
+        // Bild-Größenlimit durchsetzen (Drop + Hinweis, keine Truncation).
+        const maxImageBytes = this.#maxImageBytes();
+        const allImages = result.images || [];
+        const images = allImages.filter((img) =>
+            typeof img.data === 'string' && Buffer.byteLength(img.data, 'base64') <= maxImageBytes);
+        const dropped = allImages.length - images.length;
+        if (dropped > 0) {
+            content += `\n[IMAGE DROPPED: ${dropped} Bild(er) über maxToolImageBytes]`;
+        }
+
+        return { content, images, isError: result.isError };
     }
 
     /**
@@ -146,7 +164,7 @@ class ExecutionGateway {
             const guard = await assertSafeUrl(url);
             if (!guard.ok) {
                 const failed = await this.store.transition(actionId, 'EXECUTING', 'FAILED', {
-                    result: { content: `BLOCKED: ${guard.reason}`, isError: true },
+                    result: { content: `BLOCKED: ${guard.reason}`, images: [], isError: true },
                 });
                 await this.#auditSafe('EXECUTION_FAILED', { toolName: action.toolName, error: `network-guard: ${guard.reason}` }, actionId);
                 this.logger.error(`${this.label} executeApproved: durch NetworkGuard blockiert`, { actionId, url, reason: guard.reason });
@@ -171,10 +189,21 @@ class ExecutionGateway {
             result = { content: err.message, isError: true };
         }
 
+        // Bild-Größenlimit durchsetzen (Drop + Hinweis, keine Truncation).
+        let content = result.content;
+        const maxImageBytes = this.#maxImageBytes();
+        const allImages = result.images || [];
+        const images = allImages.filter((img) =>
+            typeof img.data === 'string' && Buffer.byteLength(img.data, 'base64') <= maxImageBytes);
+        const dropped = allImages.length - images.length;
+        if (dropped > 0) {
+            content += `\n[IMAGE DROPPED: ${dropped} Bild(er) über maxToolImageBytes]`;
+        }
+
         // 6. EXECUTING → COMPLETED | FAILED + Audit
         if (failed || result.isError) {
             const finalAction = await this.store.transition(actionId, 'EXECUTING', 'FAILED', {
-                result: { content: result.content, isError: true },
+                result: { content, images, isError: true },
             });
             await this.#auditSafe('EXECUTION_FAILED', { toolName: action.toolName, error: errorMsg || result.content }, actionId);
             this.logger.error(`${this.label} executeApproved fehlgeschlagen`, { actionId, toolName: action.toolName, error: errorMsg || result.content });
@@ -182,7 +211,7 @@ class ExecutionGateway {
         }
 
         const finalAction = await this.store.transition(actionId, 'EXECUTING', 'COMPLETED', {
-            result: { content: result.content, isError: false },
+            result: { content, images, isError: false },
         });
         await this.#auditSafe('EXECUTION_COMPLETED', { toolName: action.toolName }, actionId);
         this.logger.log(`${this.label} executeApproved erfolgreich`, { actionId, toolName: action.toolName });

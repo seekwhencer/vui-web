@@ -18,7 +18,11 @@ let state = {
   pending: false,
   error: null,
   done: false,
+  // Zeitstempel (ms) des `done`-Events — nur bei erfolgreichem Abschluss,
+  // NICHT bei Abbruch/Fehler. Dient dem visuellen "Fertig"-Signal.
+  completedAt: null,
   pendingApprovals: [],
+  images: [],
 };
 
 const listeners = new Set();
@@ -69,7 +73,7 @@ function getPendingApprovals() {
 /**
  * Startet einen Streaming-Turn. Läuft asynchron weiter, auch wenn die
  * ChatPage in der Zeit unmounted wird (Seitenwechsel). Liefert am Ende
- * `{ thinking, answer, error }`.
+ * `{ thinking, answer, error, images, tokens, model }`.
  */
 async function run(question, history, reasoningEffort) {
   let serverThinking = '';
@@ -79,6 +83,10 @@ async function run(question, history, reasoningEffort) {
   let buffer = '';
   let inThink = false;
   let thinkClosed = false;
+  let images = [];
+  // Dedup: Gleiche Bilder (identischer base64-Data) werden nur einmal
+  // gesammelt — auch wenn das LLM ein Tool mehrfach aufruft (Loop ohne Vision).
+  let seenImageHashes = new Set();
   let err = null;
 
   const flush = () => {
@@ -95,6 +103,8 @@ async function run(question, history, reasoningEffort) {
     error: null,
     pending: true,
     done: false,
+    completedAt: null,
+    images: [],
   });
 
   const controller = new AbortController();
@@ -159,8 +169,31 @@ async function run(question, history, reasoningEffort) {
       } else if (event === 'approval_resolved') {
         // Aktion wurde (ggf. woanders) aufgelöst → aus dem Store entfernen.
         if (data && data.actionId) clearPendingApproval(data.actionId);
+      } else if (event === 'tool_result') {
+        // MCP-Tool-Ergebnis mit Bild (ImageContent): Bilder für den
+        // Live-Turn sammeln. Ohne `images` (oder bei altem Server) bleibt
+        // die Liste leer. Dedup per base64-Data: Ein Tool-Loop (z. B.
+        // take_screenshot ohne Vision) liefert dasselbe Bild mehrfach —
+        // nur das erste wird behalten.
+        if (data && Array.isArray(data.images)) {
+          let added = false;
+          for (const img of data.images) {
+            if (img && typeof img.data === 'string' && !seenImageHashes.has(img.data)) {
+              seenImageHashes.add(img.data);
+              images.push(img);
+              added = true;
+            }
+          }
+          if (added) setState({ images: [...images] });
+        }
       } else if (event === 'done') {
-        setState({ done: true, pending: false, tokens: data?.tokens || null, model: data?.model || null });
+        setState({
+          done: true,
+          pending: false,
+          completedAt: Date.now(),
+          tokens: data?.tokens || null,
+          model: data?.model || null,
+        });
         flush();
       } else if (event === 'error') {
         const message =
@@ -202,12 +235,13 @@ async function run(question, history, reasoningEffort) {
     thinking: serverThinking + extractedThinking,
     answer: answerPrefix + answerSuffix,
     error: err,
+    images,
     tokens: state.tokens || null,
     model: state.model || null,
   };
 }
 
-function setResult({ thinking, answer, error, question, tokens, model }) {
+function setResult({ thinking, answer, error, question, tokens, model, images }) {
   setState({
     thinking: thinking || '',
     answer: answer || '',
@@ -215,8 +249,10 @@ function setResult({ thinking, answer, error, question, tokens, model }) {
     question: question || '',
     tokens: tokens || null,
     model: model || null,
+    images: images || [],
     pending: false,
     done: true,
+    completedAt: null,
   });
 }
 

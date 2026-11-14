@@ -58,6 +58,18 @@ class Router {
     }
 
     /**
+     * Liest das Per-Tool-Call-Limit aus der Config (Zero-Trust-Budget).
+     * Schützt vor Tool-Loops: Ein Tool (z. B. take_screenshot) wird pro
+     * Anfrage max. N× ausgeführt. Danach bekommt das LLM eine klare
+     * Fehlermeldung statt eines weiteren (identischen) Ergebnisses.
+     * @returns {number} max. Calls pro Tool-Name (Default 2)
+     */
+    maxToolCallsPerTool() {
+        const t = this.config?.security?.maxToolCallsPerTool;
+        return Number.isFinite(t) && t > 0 ? t : 2;
+    }
+
+    /**
      * Liefert die aktiven virtuellen Tool-Definitionen (gefiltert nach
      * config.security.virtualTools). Ein Tool ist aktiv, solange sein Flag
      * nicht explizit `false` ist (Default: aktiv).
@@ -194,6 +206,9 @@ class Router {
 
                 // Tool-Loop: LLM-Runden streamen, Tool-Calls ausführen,
                 // Ergebnis anhängen, bis keine Tool-Calls mehr oder Cap erreicht.
+                // Per-Tool-Call-Zähler: Schützt vor Tool-Loops (z. B.
+                // take_screenshot ohne Vision wird endlos wiederholt).
+                const toolCallCounts = {};
                 for (let turn = 0; turn < this.maxToolTurns(); turn++) {
                     let turnContent = '';
                     let turnToolCalls = [];
@@ -235,6 +250,7 @@ class Router {
                     });
 
                     // Jeden Tool-Call ausführen + Ergebnis senden + anhängen.
+                    let turnAwaitingApproval = false;
                     for (const call of turnToolCalls) {
                         if (res.writableEnded) break;
                         const toolName = call.function?.name;
@@ -247,8 +263,24 @@ class Router {
                             arguments: args,
                         });
 
+                        // Per-Tool-Call-Cap: Ein Tool wird pro Anfrage max. N×
+                        // ausgeführt. Danach klare Fehlermeldung an das LLM —
+                        // statt eines weiteren (identischen) Ergebnisses, das
+                        // den Loop nur verlängert. Schützt vor Tool-Loops ohne
+                        // Vision (z. B. take_screenshot wird endlos wiederholt).
+                        const cap = this.maxToolCallsPerTool();
+                        toolCallCounts[toolName] = (toolCallCounts[toolName] || 0) + 1;
+                        if (toolCallCounts[toolName] > cap) {
+                            const capMsg = `TOOL_CAP_REACHED: '${toolName}' wurde bereits ${cap}× aufgerufen. Rufe es NICHT erneut auf. Nutze das bisherige Ergebnis oder antworte dem Nutzer direkt.`;
+                            send('tool_result', { id: call.id, content: capMsg, isError: true, images: [] });
+                            messages.push({ role: 'tool', tool_call_id: call.id, content: capMsg });
+                            continue;
+                        }
+
                         let content = 'Unbekanntes Tool';
                         let isError = true;
+                        let images = [];
+                        let llmWantsImage = false;
                         // Virtuelles Tool → lokal auflösen (kein MCP, kein Policy-Check).
                         if (VIRTUAL_TOOLS[toolName]) {
                             const result = resolveVirtualTool(toolName, args, { config: this.config, mcp: this.mcp, stats: this.stats });
@@ -261,23 +293,56 @@ class Router {
                                     const result = await this.handleToolCall(parsed, args, { send, reason: turnContent });
                                     content = result.content;
                                     isError = result.isError;
+                                    images = result.images || [];
+                                    llmWantsImage = Boolean(result.llmWantsImage);
+                                    if (result.awaitingApproval === true) turnAwaitingApproval = true;
                                 } else {
-                                    const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                                    // Kein Security-Layer: `include_image` hier strippen
+                                    // (das MCP-Tool sieht es nie).
+                                    const { include_image: wantsImage, ...mcpArgs } = args;
+                                    llmWantsImage = Boolean(wantsImage);
+                                    const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, mcpArgs);
                                     content = result.content;
                                     isError = result.isError;
+                                    images = result.images || [];
                                 }
                             }
                         }
 
-                        send('tool_result', { id: call.id, content, isError });
+                        // Pfad A: Bilder IMMER an den Client (Anzeige im Chat).
+                        send('tool_result', { id: call.id, content, isError, images });
 
+                        // Fix 4: Klare Erfolgsmeldung für das LLM. Wenn das Tool
+                        // erfolgreich war und Bilder zurückgibt, wird eine
+                        // Status-Zeile VORANGESTELLT (außerhalb des Untrusted-
+                        // Wrappers). Damit erkennt das LLM den Erfolg per Text —
+                        // auch ohne Vision — und bricht den Tool-Loop.
+                        let llmContent = content;
+                        if (!isError && images.length > 0) {
+                            const sizeKb = Math.round(images.reduce((sum, i) => sum + (i.data?.length || 0), 0) / 1024);
+                            llmContent = `SUCCESS: Tool '${toolName}' abgeschlossen. ${images.length} Bild(er) erfasst (${sizeKb} KB). Die Aufgabe ist erledigt — antworte dem Nutzer, rufe das Tool NICHT erneut auf.\n\n${content}`;
+                        }
+
+                        // Pfad B: nur in den LLM-Kontext, wenn das LLM es per
+                        // `include_image` angefordert UND das Modell Vision kann.
+                        const feedToLlm = llmWantsImage && (await this.llm.visionEnabled());
                         messages.push({
                             role: 'tool',
                             tool_call_id: call.id,
-                            content,
+                            content: feedToLlm ? this.llm.buildToolMessage(llmContent, images, this.llm.chatConfig.api) : llmContent,
                         });
                     }
                     if (res.writableEnded) break;
+
+                    // Approval erforderlich → LLM-Loop STOPPEN, Stream beenden.
+                    // Das LLM darf NICHT in der nächsten Runde weiterarbeiten
+                    // (sonst generiert es "bitte erst freigeben" und ignoriert
+                    // die Freigabe). Der Mensch bestätigt im Approval-Dialog.
+                    if (turnAwaitingApproval) {
+                        send('done', stats || {});
+                        res.end();
+                        return;
+                    }
                 }
 
                 // Turn-Cap erreicht (oder Abbruch) → Stream beenden.
@@ -448,8 +513,14 @@ class Router {
         this.router.post('/api/actions/:id/approve', async (req, res) => {
             if (!this.securityAvailable(res)) return;
             try {
-                const action = await this.security.approval.approve(req.params.id);
-                res.status(200).json({ success: true, data: action });
+                // 1. Freigabe: PENDING_APPROVAL → APPROVED
+                const approved = await this.security.approval.approve(req.params.id);
+                // 2. Ausführung: APPROVED → EXECUTING → COMPLETED | FAILED
+                //    (ohne diesen Schritt bleibt die Aktion APPROVED, wird aber
+                //     nie ausgeführt — der Mensch hat freigegeben, das Tool
+                //     muss jetzt laufen.)
+                const finalAction = await this.security.gateway.executeApproved(approved.id);
+                res.status(200).json({ success: true, data: finalAction });
             } catch (err) {
                 this.sendApprovalError(err, res);
             }
@@ -629,34 +700,38 @@ class Router {
      *                 Ergebnis als Untrusted Data markiert.
      *
      * @param {{serverId: string, toolName: string}} parsed - Zerlegter Tool-Name
-     * @param {object} args - Tool-Argumente
+     * @param {object} args - Tool-Argumente (kann das injizierte `include_image` enthalten)
      * @param {{send?: Function, reason?: string}} [options]
      *   send: SSE-Helper (für `approval_required`), reason: Kontext für die Freigabe
-     * @returns {Promise<{content: string, isError: boolean}>}
+     * @returns {Promise<{content: string, images: Array<object>, isError: boolean, llmWantsImage: boolean, awaitingApproval?: boolean}>}
      */
     async handleToolCall(parsed, args, { send, reason } = {}) {
-        const policyResult = this.security.policy.evaluate(parsed.serverId, parsed.toolName, args);
+        // `include_image` ist die pro-Call-Entscheidung des LLMs (injected in das
+        // Tool-Schema). Vor dem Forward strippen — das MCP-Tool sieht es nie.
+        const { include_image: llmWantsImage, ...mcpArgs } = args;
+
+        const policyResult = this.security.policy.evaluate(parsed.serverId, parsed.toolName, mcpArgs);
 
         if (!policyResult.allowed) {
             await this.security.audit.log('POLICY_DENIED', { toolName: parsed.toolName, reason: policyResult.reason });
             this.logger.log(this.label, 'Tool-Call abgelehnt (Policy)', {
                 tool: `${parsed.serverId}__${parsed.toolName}`, reason: policyResult.reason,
             });
-            return { content: `DENIED: ${policyResult.reason}`, isError: true };
+            return { content: `DENIED: ${policyResult.reason}`, images: [], isError: true, llmWantsImage: false };
         }
 
         if (policyResult.requiresApproval) {
             const action = await this.security.approval.propose({
                 serverId: parsed.serverId,
                 toolName: parsed.toolName,
-                args,
+                args: mcpArgs,
                 reason: reason || '',
             });
             if (send) {
                 send('approval_required', {
                     actionId: action.id,
                     toolName: parsed.toolName,
-                    arguments: args,
+                    arguments: mcpArgs,
                     reason: action.reason,
                     expiresAt: action.expiresAt,
                 });
@@ -664,12 +739,20 @@ class Router {
             this.logger.log(this.label, 'Tool-Call wartet auf Freigabe', {
                 actionId: action.id, tool: `${parsed.serverId}__${parsed.toolName}`,
             });
-            return { content: `AWAITING_APPROVAL: Aktion ${action.id} wartet auf Freigabe.`, isError: false };
+            // awaitingApproval=true signalisiert dem Tool-Loop, dass er STOPPEN
+            // muss — das LLM darf NICHT weiterarbeiten, sondern wartet auf die
+            // menschliche Freigabe (sonst generiert es "bitte erst freigeben").
+            return { content: `AWAITING_APPROVAL: Aktion ${action.id} wartet auf Freigabe.`, images: [], isError: false, llmWantsImage: false, awaitingApproval: true };
         }
 
         // read: direkt ausführen (Timeout + Größenlimit) + Untrusted-Wrapping.
-        const result = await this.security.gateway.executeRead(parsed.serverId, parsed.toolName, args);
-        return { content: wrapUntrusted(result.content), isError: result.isError };
+        const result = await this.security.gateway.executeRead(parsed.serverId, parsed.toolName, mcpArgs);
+        return {
+            content: wrapUntrusted(result.content),
+            images: result.images || [],
+            isError: result.isError,
+            llmWantsImage: Boolean(llmWantsImage),
+        };
     }
 
     /**
@@ -704,6 +787,7 @@ class Router {
             }
         }
 
+        const toolCallCounts = {};
         for (let turn = 0; turn < maxTurns; turn++) {
             const turnResult = await this.llm.chatWithTools(messages, tools, options);
             this.stats?.recordLlm(turnResult.usage);
@@ -721,34 +805,78 @@ class Router {
             });
 
             // Jeden Tool-Call ausführen + Ergebnis anhängen.
+            let turnAwaitingApproval = false;
             for (const call of turnResult.toolCalls) {
                 const toolName = call.function?.name;
                 let args = {};
                 try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
 
+                // Per-Tool-Call-Cap: Schützt vor Tool-Loops (z. B. take_screenshot
+                // ohne Vision wird endlos wiederholt).
+                const cap = this.maxToolCallsPerTool();
+                toolCallCounts[toolName] = (toolCallCounts[toolName] || 0) + 1;
+                if (toolCallCounts[toolName] > cap) {
+                    const capMsg = `TOOL_CAP_REACHED: '${toolName}' wurde bereits ${cap}× aufgerufen. Rufe es NICHT erneut auf. Nutze das bisherige Ergebnis oder antworte dem Nutzer direkt.`;
+                    messages.push({ role: 'tool', tool_call_id: call.id, content: capMsg });
+                    continue;
+                }
+
                 let content = 'Unbekanntes Tool';
+                let isError = true;
+                let images = [];
+                let llmWantsImage = false;
                 // Virtuelles Tool → lokal auflösen (kein MCP, kein Policy-Check).
                 if (VIRTUAL_TOOLS[toolName]) {
                     const result = resolveVirtualTool(toolName, args, { config: this.config, mcp: this.mcp, stats: this.stats });
                     content = result.content;
+                    isError = result.isError;
                 } else {
                     const parsed = this.mcp.parseToolName(toolName);
                     if (parsed) {
                         if (this.security) {
                             const result = await this.handleToolCall(parsed, args, { reason: turnResult.content });
                             content = result.content;
+                            isError = result.isError;
+                            images = result.images || [];
+                            llmWantsImage = Boolean(result.llmWantsImage);
+                            if (result.awaitingApproval === true) turnAwaitingApproval = true;
                         } else {
-                            const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, args);
+                            // Kein Security-Layer: `include_image` hier strippen
+                            // (das MCP-Tool sieht es nie).
+                            const { include_image: wantsImage, ...mcpArgs } = args;
+                            llmWantsImage = Boolean(wantsImage);
+                            const result = await this.mcp.callTool(parsed.serverId, parsed.toolName, mcpArgs);
                             content = result.content;
+                            isError = result.isError;
+                            images = result.images || [];
                         }
                     }
+                }
+
+                // Pfad B: nur in den LLM-Kontext, wenn das LLM es per
+                // `include_image` angefordert UND das Modell Vision kann.
+                const feedToLlm = llmWantsImage && (await this.llm.visionEnabled());
+
+                // Fix 4: SUCCESS-Meldung für das LLM (klare Erfolgssignale,
+                // verhindert Tool-Loops ohne Vision).
+                let llmContent = content;
+                if (!isError && images.length > 0) {
+                    const sizeKb = Math.round(images.reduce((sum, i) => sum + (i.data?.length || 0), 0) / 1024);
+                    llmContent = `SUCCESS: Tool '${toolName}' abgeschlossen. ${images.length} Bild(er) erfasst (${sizeKb} KB). Die Aufgabe ist erledigt — antworte dem Nutzer, rufe das Tool NICHT erneut auf.\n\n${content}`;
                 }
 
                 messages.push({
                     role: 'tool',
                     tool_call_id: call.id,
-                    content,
+                    content: feedToLlm ? this.llm.buildToolMessage(llmContent, images, this.llm.chatConfig.api) : llmContent,
                 });
+            }
+
+            // Approval erforderlich → LLM-Loop STOPPEN. Das LLM darf NICHT in
+            // der nächsten Runde weiterarbeiten (sonst ignoriert es die
+            // Freigabe). Der Mensch bestätigt im Approval-Dialog.
+            if (turnAwaitingApproval) {
+                return `[Wartet auf Freigabe — bitte im Approval-Dialog bestätigen]`;
             }
         }
 

@@ -11,6 +11,7 @@ frontend/dist/
 # Server
 server/config.json
 server/data/
+server/src/data/
 .env
 
 # Runtime data

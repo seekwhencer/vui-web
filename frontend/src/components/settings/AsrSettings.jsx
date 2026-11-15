@@ -68,8 +68,15 @@ export default function AsrSettings({
   saving,
   error,
   saved,
+  envLocked = {},
 }) {
   const { t } = useTranslation();
+
+  /** Liefert den Env-Namen für ein Feld (undefined = nicht gelockt). */
+  const lockedFor = (field) => {
+    const group = field.group || 'whisper';
+    return envLocked?.[group]?.[field.key];
+  };
 
   const vadParams = useMemo(
     () =>
@@ -115,16 +122,12 @@ export default function AsrSettings({
                 <h3>{t('settings.sections.badwords')}</h3>
               </div>
             </div>
-            <label className="settings__field settings__field--full">
-              <span>{t('settings.fields.badwords')}</span>
-              <textarea
-                className="settings__textarea"
-                rows={6}
-                value={draft.badwords}
-                placeholder={t('settings.fields.badwordsPlaceholder')}
-                onChange={(e) => updateDraft((d) => ({ ...d, badwords: e.target.value }))}
-              />
-            </label>
+            <SettingsField
+              field={{ key: 'badwords', type: 'textarea', label: 'settings.fields.badwords', placeholder: 'settings.fields.badwordsPlaceholder' }}
+              value={draft.badwords}
+              onChange={(v) => updateDraft((d) => ({ ...d, badwords: v }))}
+              locked={envLocked?.root?.badwords}
+            />
           </div>
         </div>
         {footer}
@@ -147,14 +150,26 @@ export default function AsrSettings({
 
           <div className="settings__grid">
             {section.fields.map((field) => (
-              <SettingsField key={field.key} field={field} value={fieldValue(field)} onChange={(v) => setFieldValue(field, v)} />
+              <SettingsField
+                key={field.key}
+                field={field}
+                value={fieldValue(field)}
+                onChange={(v) => setFieldValue(field, v)}
+                locked={lockedFor(field)}
+              />
             ))}
           </div>
 
           {section.subFields && draft.whisper.vadFilter && (
             <div className="settings__grid settings__grid--sub">
               {section.subFields.map((field) => (
-                <SettingsField key={field.key} field={field} value={vadParams[field.key]} onChange={(v) => setVadParam(field.key, v)} />
+                <SettingsField
+                  key={field.key}
+                  field={field}
+                  value={vadParams[field.key]}
+                  onChange={(v) => setVadParam(field.key, v)}
+                  locked={envLocked?.whisper?.vadParameters}
+                />
               ))}
             </div>
           )}

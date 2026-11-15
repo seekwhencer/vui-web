@@ -141,6 +141,14 @@ class Config {
         this.whisperHost = env.WHISPER_HOST || loaded?.whisperHost || 'vui-service';
         this.whisperPort = parseInt(env.WHISPER_PORT, 10) || loaded?.whisperPort || 10300;
 
+        // Env-gelockte Felder: key → Name der Umgebungsvariable.
+        // Diese Werte sind in der UI nicht änderbar (Env hat immer Vorrang).
+        this.envLocked = { root: {}, whisper: {}, llm: {}, security: {}, media: {} };
+        if (parseInt(env.SERVER_PORT, 10)) this.envLocked.root.serverPort = 'SERVER_PORT';
+        if (env.VERBOSE === 'true') this.envLocked.root.verbose = 'VERBOSE';
+        if (env.WHISPER_HOST) this.envLocked.root.whisperHost = 'WHISPER_HOST';
+        if (parseInt(env.WHISPER_PORT, 10)) this.envLocked.root.whisperPort = 'WHISPER_PORT';
+
         // Transkriptionsparameter: env > config.json > Default
         this.whisper = this.resolveWhisperParams(loaded);
 
@@ -238,6 +246,7 @@ class Config {
         const params = {};
         for (const [key, spec] of Object.entries(WHISPER_PARAMS)) {
             const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            if (fromEnv !== undefined) this.envLocked.whisper[key] = spec.env;
             const fromFile = loaded?.whisper?.[key];
             let value =
                 fromEnv !== undefined ? fromEnv
@@ -265,6 +274,7 @@ class Config {
         const params = {};
         for (const [key, spec] of Object.entries(LLM_PARAMS)) {
             const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            if (fromEnv !== undefined) this.envLocked.llm[key] = spec.env;
             const fromFile = loaded?.llm?.[key];
             params[key] =
                 fromEnv !== undefined ? fromEnv
@@ -283,6 +293,7 @@ class Config {
         const params = {};
         for (const [key, spec] of Object.entries(SECURITY_PARAMS)) {
             const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            if (fromEnv !== undefined) this.envLocked.security[key] = spec.env;
             const fromFile = loaded?.security?.[key];
             params[key] =
                 fromEnv !== undefined ? fromEnv
@@ -301,6 +312,7 @@ class Config {
         const params = {};
         for (const [key, spec] of Object.entries(MEDIA_PARAMS)) {
             const fromEnv = this.parseEnvValue(this.env[spec.env], spec.type);
+            if (fromEnv !== undefined) this.envLocked.media[key] = spec.env;
             const fromFile = loaded?.media?.[key];
             params[key] =
                 fromEnv !== undefined ? fromEnv
@@ -317,7 +329,10 @@ class Config {
      */
     resolveBadwords(loaded) {
         const fromEnv = this.parseEnvValue(this.env.WHISPER_BADWORDS, 'array');
-        if (Array.isArray(fromEnv)) return fromEnv.map((w) => String(w)).filter(Boolean);
+        if (Array.isArray(fromEnv)) {
+            this.envLocked.root.badwords = 'WHISPER_BADWORDS';
+            return fromEnv.map((w) => String(w)).filter(Boolean);
+        }
         const fromFile = loaded?.badwords;
         if (Array.isArray(fromFile)) return fromFile.map((w) => String(w)).filter(Boolean);
         return [];
@@ -378,7 +393,14 @@ class Config {
                 toolPolicies: { ...(this.security.toolPolicies || {}) },
                 virtualTools: { ...(this.security.virtualTools || {}) }
             },
-            media: { ...this.media }
+            media: { ...this.media },
+            envLocked: {
+                root: { ...this.envLocked.root },
+                whisper: { ...this.envLocked.whisper },
+                llm: { ...this.envLocked.llm },
+                security: { ...this.envLocked.security },
+                media: { ...this.envLocked.media }
+            }
         };
     }
 
@@ -649,23 +671,49 @@ class Config {
     }
 
     /**
+     * Entfernt Env-gelockte Keys aus einem Patch-Objekt (Env hat immer Vorrang).
+     * @param {Record<string, unknown> | undefined} obj
+     * @param {string} group - 'root' | 'whisper' | 'llm' | 'security' | 'media'
+     * @returns {Record<string, unknown>}
+     */
+    stripEnvLocked(obj, group) {
+        if (!obj || typeof obj !== 'object') return {};
+        const locked = this.envLocked[group] || {};
+        const out = {};
+        for (const [k, v] of Object.entries(obj)) {
+            if (Object.prototype.hasOwnProperty.call(locked, k)) continue;
+            out[k] = v;
+        }
+        return out;
+    }
+
+    /**
      * Wendet einen Partial-Patch an: validieren → mergen → persistieren → klassifizieren.
+     * Env-gelockte Felder werden ignoriert (Env hat immer Vorrang).
      * @param {Record<string, unknown>} patch
      * @returns {{ applied: string[], restartRequired: string[] }}
      */
     updateSettings(patch) {
         const current = this.getSettings();
 
+        // Env-gelockte Keys aus dem Patch entfernen (UI sendet ggf. komplette Drafts).
+        const p = { ...patch };
+        for (const k of Object.keys(this.envLocked.root)) delete p[k];
+        p.whisper = this.stripEnvLocked(patch.whisper, 'whisper');
+        p.llm = this.stripEnvLocked(patch.llm, 'llm');
+        p.security = this.stripEnvLocked(patch.security, 'security');
+        p.media = this.stripEnvLocked(patch.media, 'media');
+
         // Deep-Merge für die verschachtelten Objekte (whisper, llm, security, vadParameters)
         const next = {
             ...current,
-            ...patch,
-            whisper: { ...current.whisper, ...(patch.whisper || {}) },
-            llm: { ...current.llm, ...(patch.llm || {}) },
-            security: { ...current.security, ...(patch.security || {}) },
-            media: { ...current.media, ...(patch.media || {}) },
-            badwords: patch.badwords !== undefined ? patch.badwords : current.badwords,
-            mcpServers: patch.mcpServers !== undefined ? patch.mcpServers : current.mcpServers
+            ...p,
+            whisper: { ...current.whisper, ...(p.whisper || {}) },
+            llm: { ...current.llm, ...(p.llm || {}) },
+            security: { ...current.security, ...(p.security || {}) },
+            media: { ...current.media, ...(p.media || {}) },
+            badwords: p.badwords !== undefined ? p.badwords : current.badwords,
+            mcpServers: p.mcpServers !== undefined ? p.mcpServers : current.mcpServers
         };
 
         const errors = this.validateSettings(next);
@@ -695,7 +743,7 @@ class Config {
         // Persistieren (config.json)
         this.persist();
 
-        const changed = Object.keys(patch).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
+        const changed = Object.keys(p).filter((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]));
         return {
             applied: changed.filter((k) => Config.runtimeKeys.includes(k)),
             restartRequired: changed.filter((k) => Config.restartKeys.includes(k))

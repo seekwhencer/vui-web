@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSettings, updateSettings } from '../../api/settings.js';
+import EnvLockBadge from './EnvLockBadge.jsx';
 
 /**
  * Security-Felder (alle `security.*`), Reihenfolge = Anzeigereihenfolge.
@@ -8,6 +9,7 @@ import { getSettings, updateSettings } from '../../api/settings.js';
  */
 export const SECURITY_FIELDS = [
   { key: 'maxToolTurns', type: 'number', label: 'settings.fields.maxToolTurns', min: 1, step: 1 },
+  { key: 'maxToolCallsPerTool', type: 'number', label: 'settings.fields.maxToolCallsPerTool', min: 1, step: 1 },
   { key: 'maxToolResultBytes', type: 'number', label: 'settings.fields.maxToolResultBytes', min: 1, step: 1 },
   { key: 'maxToolImageBytes', type: 'number', label: 'settings.fields.maxToolImageBytes', min: 1, step: 1 },
   { key: 'toolTimeoutMs', type: 'number', label: 'settings.fields.toolTimeoutMs', min: 1, step: 1 },
@@ -64,6 +66,7 @@ export default function SecuritySettings({ security: securityProp } = {}) {
   const initial = securityProp !== undefined ? { ...securityProp } : {};
   const [values, setValues] = useState(initial);
   const [committed, setCommitted] = useState(initial);
+  const [envLocked, setEnvLocked] = useState({});
   const [loading, setLoading] = useState(securityProp === undefined);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -72,9 +75,11 @@ export default function SecuritySettings({ security: securityProp } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const sec = extractSecurity(await getSettings());
+      const data = await getSettings();
+      const sec = extractSecurity(data);
       setValues(sec);
       setCommitted(sec);
+      setEnvLocked(data.envLocked || {});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -131,14 +136,19 @@ export default function SecuritySettings({ security: securityProp } = {}) {
       <div className="settings__grid">
         {SECURITY_FIELDS.map((field) => {
           const raw = values[field.key];
+          const locked = envLocked?.security?.[field.key];
+          const isLocked = typeof locked === 'string' && locked !== '';
+          const lockBadge = isLocked ? <EnvLockBadge envName={locked} /> : null;
+          const baseClass = isLocked ? 'settings__field settings__field--locked' : 'settings__field';
           if (field.type === 'textarea') {
             return (
-              <label className="settings__field settings__field--full" key={field.key}>
-                <span>{t(field.label)}</span>
+              <label className={`${baseClass} settings__field--full`} key={field.key}>
+                <span>{t(field.label)} {lockBadge}</span>
                 <textarea
                   className="settings__textarea"
                   rows={4}
                   value={typeof raw === 'string' ? raw : ''}
+                  disabled={isLocked}
                   onChange={(e) => {
                     setSaved(false);
                     setValues((v) => ({ ...v, [field.key]: e.target.value }));
@@ -149,13 +159,14 @@ export default function SecuritySettings({ security: securityProp } = {}) {
             );
           }
           return (
-            <label className="settings__field" key={field.key}>
-              <span>{t(field.label)}</span>
+            <label className={baseClass} key={field.key}>
+              <span>{t(field.label)} {lockBadge}</span>
               <input
                 type="number"
                 min={field.min}
                 step={field.step}
                 value={typeof raw === 'number' ? raw : ''}
+                disabled={isLocked}
                 onChange={(e) => {
                   setSaved(false);
                   const n = e.target.value === '' ? '' : Number(e.target.value);

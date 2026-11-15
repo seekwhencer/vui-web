@@ -108,6 +108,7 @@
     "uiHint": "Applicato immediatamente e salvato localmente",
     "securityHint": "Le modifiche si applicano immediatamente",
     "loading": "Caricamento…",
+    "envLocked": "Impostato tramite variabile d'ambiente ({{env}}) – non modificabile",
     "categories": {
       "app": "App",
       "asr": "ASR",
@@ -116,6 +117,8 @@
       "mcp": "MCP"
     },
     "sub": {
+      "server": "Server",
+      "media": "Media",
       "connection": "Connessione",
       "prompt": "Prompt",
       "servers": "Server",
@@ -125,6 +128,13 @@
     "app": {
       "title": "App",
       "placeholder": "Le impostazioni dell'app appariranno qui.",
+      "server": {
+        "title": "Server",
+        "port": "Porta server",
+        "portHint": "Le modifiche richiedono un riavvio.",
+        "verbose": "Log verbosi",
+        "verboseHint": "Log di server più dettagliati."
+      },
       "media": {
         "title": "Media",
         "dir": "Percorso media",
@@ -178,12 +188,14 @@
       "vadPad": "Padding voce (ms)",
       "badwords": "Parole da filtrare (una per riga)",
       "badwordsPlaceholder": "es.\nspam\nparola pubblicitaria",
+      "llmApi": "API (openai/ollama)",
       "llmHost": "Host",
       "llmPort": "Porta",
       "llmModel": "Modello",
       "llmSystemPrompt": "Prompt di sistema",
       "llmVision": "Visione (auto/true/false)",
       "maxToolTurns": "Max. roundate tool",
+      "maxToolCallsPerTool": "Max. chiamate per tool",
       "maxToolResultBytes": "Max. risultato tool (byte)",
       "maxToolImageBytes": "Max. dimensione immagine (byte)",
       "toolTimeoutMs": "Timeout tool (ms)",

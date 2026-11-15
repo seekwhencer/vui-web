@@ -108,6 +108,7 @@
     "uiHint": "Applied immediately and saved locally",
     "securityHint": "Changes apply immediately",
     "loading": "Loading…",
+    "envLocked": "Set via environment variable ({{env}}) – not editable",
     "categories": {
       "app": "App",
       "asr": "ASR",
@@ -116,6 +117,8 @@
       "mcp": "MCP"
     },
     "sub": {
+      "server": "Server",
+      "media": "Media",
       "connection": "Connection",
       "prompt": "Prompt",
       "servers": "Servers",
@@ -125,6 +128,13 @@
     "app": {
       "title": "App",
       "placeholder": "App settings will appear here.",
+      "server": {
+        "title": "Server",
+        "port": "Server port",
+        "portHint": "Changes require a restart.",
+        "verbose": "Verbose logging",
+        "verboseHint": "More detailed server logs."
+      },
       "media": {
         "title": "Media",
         "dir": "Media path",
@@ -178,12 +188,14 @@
       "vadPad": "Speech padding (ms)",
       "badwords": "Badwords (one per line)",
       "badwordsPlaceholder": "e.g.\nspam\nad word",
+      "llmApi": "API (openai/ollama)",
       "llmHost": "Host",
       "llmPort": "Port",
       "llmModel": "Model",
       "llmSystemPrompt": "System prompt",
       "llmVision": "Vision (auto/true/false)",
       "maxToolTurns": "Max. tool rounds",
+      "maxToolCallsPerTool": "Max. calls per tool",
       "maxToolResultBytes": "Max. tool result (bytes)",
       "maxToolImageBytes": "Max. image size (bytes)",
       "toolTimeoutMs": "Tool timeout (ms)",

@@ -10,12 +10,19 @@ import McpSettings from '../components/settings/McpSettings.jsx';
 
 /**
  * Top-Kategorien der Settings-Seite.
- * - `subs` leer → keine Sub-Navigation (App, UI).
- * - `subs` gefüllt → Level-2-Tabs (ASR, LLM, MCP).
+ * - `subs` leer → keine Sub-Navigation (UI).
+ * - `subs` gefüllt → Level-2-Tabs (App, ASR, LLM, MCP).
  * Reihenfolge = Anzeigereihenfolge.
  */
 const CATEGORIES = [
-  { id: 'app', title: 'settings.categories.app', subs: [] },
+  {
+    id: 'app',
+    title: 'settings.categories.app',
+    subs: [
+      { id: 'server', title: 'settings.sub.server' },
+      { id: 'media', title: 'settings.sub.media' },
+    ],
+  },
   {
     id: 'asr',
     title: 'settings.categories.asr',
@@ -134,7 +141,7 @@ export default function SettingsPage() {
   const renderCategory = () => {
     switch (activeCategory.id) {
       case 'app':
-        return <AppSettings />;
+        return <AppSettings view={activeSub?.id} />;
       case 'ui':
         return <UiSettings />;
       case 'mcp':
@@ -150,6 +157,7 @@ export default function SettingsPage() {
             saving={saving}
             error={error}
             saved={saved}
+            envLocked={settings?.envLocked}
           />
         );
       default: // asr
@@ -163,6 +171,7 @@ export default function SettingsPage() {
             saving={saving}
             error={error}
             saved={saved}
+            envLocked={settings?.envLocked}
           />
         );
     }

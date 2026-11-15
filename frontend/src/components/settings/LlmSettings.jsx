@@ -4,10 +4,11 @@ import SaveFooter from './SaveFooter.jsx';
 import SecuritySettings from './SecuritySettings.jsx';
 
 const CONNECTION_FIELDS = [
+  { key: 'api', type: 'select', label: 'settings.fields.llmApi', options: ['openai', 'ollama'] },
   { key: 'host', type: 'text', label: 'settings.fields.llmHost', placeholder: 'vui-tts' },
   { key: 'port', type: 'number', label: 'settings.fields.llmPort', min: 1, max: 65535, step: 1 },
   { key: 'model', type: 'text', label: 'settings.fields.llmModel', placeholder: 'llama3.1' },
-  { key: 'vision', type: 'select', label: 'settings.fields.llmVision', options: ['auto', 'true', 'false'] },
+  { key: 'vision', type: 'select', label: 'settings.fields.llmVision', options: ['auto', 'true', 'false'], triState: true },
 ];
 
 const PROMPT_FIELDS = [
@@ -23,6 +24,7 @@ export default function LlmSettings({
   saving,
   error,
   saved,
+  envLocked = {},
 }) {
   const { t } = useTranslation();
 
@@ -64,6 +66,7 @@ export default function LlmSettings({
                 field={field}
                 value={fieldValue(field)}
                 onChange={(v) => setFieldValue(field, v)}
+                locked={envLocked?.llm?.[field.key]}
               />
             ))}
           </div>

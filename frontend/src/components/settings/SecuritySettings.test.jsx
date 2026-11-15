@@ -16,6 +16,7 @@ import SecuritySettings, {
 
 const SECURITY = {
   maxToolTurns: 10,
+  maxToolCallsPerTool: 2,
   maxToolResultBytes: 65536,
   maxToolImageBytes: 2097152,
   toolTimeoutMs: 30000,
@@ -30,10 +31,11 @@ beforeEach(async () => {
 });
 
 describe('SECURITY_FIELDS', () => {
-  it('enthält alle security.*-Felder inkl. maxToolImageBytes', () => {
+  it('enthält alle security.*-Felder inkl. maxToolCallsPerTool + maxToolImageBytes', () => {
     const keys = SECURITY_FIELDS.map((f) => f.key);
     expect(keys).toEqual([
       'maxToolTurns',
+      'maxToolCallsPerTool',
       'maxToolResultBytes',
       'maxToolImageBytes',
       'toolTimeoutMs',
@@ -89,6 +91,7 @@ describe('SecuritySettings (Rendering)', () => {
     expect(html).toContain('settings__grid');
     // Feldwerte sind im Markup.
     expect(html).toContain('value="10"');
+    expect(html).toContain('value="2"');
     expect(html).toContain('value="65536"');
     expect(html).toContain('value="2097152"');
     expect(html).toContain('value="30000"');
